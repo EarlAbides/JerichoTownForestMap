@@ -140,6 +140,18 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install fitdecode
 ```
 
+**The venv is not portable and the project has just been moved.** `.venv/Scripts/`
+bakes the absolute path into `activate` and into the `pip` / `fitjson` / `fittxt`
+shims, so a moved venv breaks in confusing ways. It is gitignored and there is
+exactly one dependency, so delete and rebuild rather than patching:
+
+```
+rm -rf .venv && python -m venv .venv
+.venv/Scripts/python.exe -m pip install fitdecode
+```
+
+Then re-run the pipeline once to confirm, ending with `privacy_audit.py`.
+
 `fitdecode` remains the only dependency. `merge_passes.py` is deliberately pure
 Python — no numpy, no shapely — so setup stays one line and there are no wheels
 to build on Windows.
@@ -203,11 +215,15 @@ push.** It exits non-zero on a leak and works as a pre-commit hook.
 
 Pushed 2026-08-20 as **[EarlAbides/JerichoTownForestMap](https://github.com/EarlAbides/JerichoTownForestMap)**,
 public, branch `main`. First commit `024f60c`, 1641 files. `gh` is authenticated
-as EarlAbides over ssh. The local working directory is still named `ForestMap`;
-the repo is not. Don't let that trip you up.
+as EarlAbides over ssh.
 
-**Remaining manual step:** Settings → Pages → deploy from branch → `main` →
-`/docs`. Until that is switched on the site 404s. Once live:
+**Local checkout lives at `C:\Users\jeffr\Projects\GitHub\EarlAbides\JerichoTownForestMap`.**
+Moved there from `GitHub\ForestMap` on 2026-08-20 to match the repo name and to
+sit under an owner directory. Git itself is unaffected by the move — no absolute
+paths in `.git/config`, and every script resolves its own root from `__file__` —
+but the venv is, see above.
+
+**GitHub Pages is enabled**, legacy build from `main` / `docs`, HTTPS enforced:
 https://earlabides.github.io/JerichoTownForestMap/
 
 Geolocation needs HTTPS, so the field PWA cannot locate you from `file://` —
