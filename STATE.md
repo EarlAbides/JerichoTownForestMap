@@ -199,13 +199,16 @@ push.** It exits non-zero on a leak and works as a pre-commit hook.
    forest and makes the site depend on VCGI being up and CORS-friendly. 12.9 MB
    is nothing against the 1 GB Pages soft limit.
 
-## Next steps, once the user says go
+## Shipped
 
-```
-git add -A && git commit -m "Jericho Town Forest trail map"
-gh repo create ForestMap --public --source=. --push
-```
-Then Settings → Pages → deploy from branch → `main` → `/docs`.
-Geolocation needs HTTPS, so it will not work from `file://`.
+Pushed 2026-08-20 as **[EarlAbides/JerichoTownForestMap](https://github.com/EarlAbides/JerichoTownForestMap)**,
+public, branch `main`. First commit `024f60c`, 1641 files. `gh` is authenticated
+as EarlAbides over ssh. The local working directory is still named `ForestMap`;
+the repo is not. Don't let that trip you up.
 
-`gh` is authenticated as **EarlAbides**, git protocol ssh.
+**Remaining manual step:** Settings → Pages → deploy from branch → `main` →
+`/docs`. Until that is switched on the site 404s. Once live:
+https://earlabides.github.io/JerichoTownForestMap/
+
+Geolocation needs HTTPS, so the field PWA cannot locate you from `file://` —
+only from the Pages URL. That is expected, not a bug to chase.

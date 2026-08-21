@@ -1,4 +1,4 @@
-# ForestMap — Jericho Town Forest
+# Jericho Town Forest — trail map
 
 A trail map of the Jericho Town Forest in Jericho, Vermont, built from Apple Watch
 GPS tracks and Vermont's open LiDAR and orthoimagery.
@@ -8,8 +8,8 @@ no crisp edge. The town's line is one thing; past it is wild land threaded with
 herd paths and neighbourhood connectors that appear on no map at all. Working out
 where they actually go, by walking them, is the point of this repository.
 
-**Live map:** enable GitHub Pages on `main` / `docs`, then visit
-`https://<user>.github.io/ForestMap/`
+**Live map:** https://earlabides.github.io/JerichoTownForestMap/
+(GitHub Pages, served from `main` / `docs`)
 
 ## What's here
 
