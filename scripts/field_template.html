@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0C110F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Town Forest">
+<title>Jericho Town Forest</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="leaflet.css">
+<style>
+  :root{
+    --bg:#0C110F; --panel:#121A16f2; --ink:#E9F0EA; --ink-2:#94A29A;
+    --rule:#2B3630; --blaze:#FF7A38; --slate:#6FC0EE; --gps:#3DA9FC;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,system-ui,"Segoe UI",sans-serif;
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-t:env(safe-area-inset-top,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:var(--sans);overscroll-behavior:none}
+  #map{position:absolute;inset:0}
+  .leaflet-container{background:var(--bg);font-family:var(--sans)}
+  .leaflet-control-attribution{background:#0C110Fcc!important;color:#7F8C85!important;
+    font-size:9px!important;padding:1px 5px!important}
+  .leaflet-control-attribution a{color:#7FA8BE!important}
+  .leaflet-control-zoom{display:none}
+
+  .fab{position:absolute;right:14px;width:56px;height:56px;border-radius:28px;
+    background:var(--panel);border:1px solid var(--rule);color:var(--ink);
+    display:grid;place-items:center;box-shadow:0 4px 20px #000a;
+    backdrop-filter:blur(10px);cursor:pointer;z-index:900;padding:0}
+  .fab:active{transform:scale(.94)}
+  .fab svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round}
+  #locate{bottom:calc(22px + var(--safe-b))}
+  #locate.on{color:var(--gps);border-color:var(--gps)}
+  #locate.hunting svg{animation:spin 1.1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #layers{bottom:calc(90px + var(--safe-b))}
+
+  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:950;background:var(--panel);
+    backdrop-filter:blur(16px);border-top:1px solid var(--rule);
+    padding:10px 16px calc(18px + var(--safe-b));color:var(--ink);
+    transform:translateY(101%);transition:transform .26s cubic-bezier(.4,0,.2,1)}
+  #sheet.open{transform:translateY(0)}
+  .grab{width:38px;height:4px;border-radius:2px;background:var(--rule);margin:0 auto 14px}
+  .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-2);margin:14px 0 8px}
+  .lbl:first-of-type{margin-top:0}
+  .seg{display:flex;gap:7px}
+  .seg button{flex:1;padding:11px 6px;background:transparent;color:var(--ink-2);
+    border:1px solid var(--rule);border-radius:8px;font-size:12.5px;font-family:var(--sans);
+    cursor:pointer}
+  .seg button[aria-pressed="true"]{background:#FF7A3820;color:var(--blaze);border-color:var(--blaze)}
+  .rows{display:flex;flex-direction:column;gap:2px}
+  .rows label{display:flex;align-items:center;gap:11px;padding:9px 2px;font-size:14.5px;cursor:pointer}
+  .rows input{width:19px;height:19px;accent-color:var(--blaze);margin:0}
+  .sw{width:17px;height:0;border-top:3px solid;flex:none}
+  #status{position:absolute;top:calc(10px + var(--safe-t));left:50%;transform:translateX(-50%);
+    z-index:900;background:var(--panel);border:1px solid var(--rule);border-radius:20px;
+    padding:6px 14px;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+    backdrop-filter:blur(10px);white-space:nowrap;max-width:calc(100vw - 28px);
+    overflow:hidden;text-overflow:ellipsis}
+  #status b{color:var(--ink);font-weight:600}
+  .off{position:absolute;top:calc(10px + var(--safe-t));right:14px;z-index:900;
+    background:#8A5A1Ecc;color:#FFE2C2;border-radius:12px;padding:4px 9px;
+    font-family:var(--mono);font-size:10px;display:none}
+  .off.show{display:block}
+  #dl{width:100%;padding:13px;background:transparent;color:var(--ink);
+    border:1px solid var(--rule);border-radius:9px;font-size:14px;
+    font-family:var(--sans);cursor:pointer}
+  #dl:active{transform:scale(.99)}
+  #dl:disabled{opacity:.55;cursor:default}
+  #dlbar{height:4px;border-radius:2px;background:var(--rule);margin-top:9px;
+    overflow:hidden;display:none}
+  #dlbar.show{display:block}
+  #dlbar i{display:block;height:100%;width:0;background:var(--blaze);
+    transition:width .18s linear}
+  #dlmsg{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);margin-top:7px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="status">locating&hellip;</div>
+<div class="off" id="offline">OFFLINE</div>
+
+<button class="fab" id="layers" aria-label="Layers">
+  <svg viewBox="0 0 24 24"><path d="M12 3 2 9l10 6 10-6-10-6Z"/><path d="m2 15 10 6 10-6"/></svg>
+</button>
+<button class="fab" id="locate" aria-label="Find my location">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+</button>
+
+<div id="sheet">
+  <div class="grab"></div>
+  <div class="lbl">Basemap</div>
+  <div class="seg" id="baseseg">
+    <button data-b="img" aria-pressed="true">Aerial</button>
+    <button data-b="hill" aria-pressed="false">Terrain</button>
+    <button data-b="osm" aria-pressed="false">Street</button>
+  </div>
+  <div class="lbl">Show</div>
+  <div class="rows">
+    <label><input type="checkbox" id="l-trk" checked>
+      <span class="sw" style="border-color:var(--blaze)"></span>Trails</label>
+    <label><input type="checkbox" id="l-once">
+      <span class="sw" style="border-color:var(--slate);border-top-style:dashed"></span>Flag once-walked</label>
+    <label><input type="checkbox" id="l-cont">
+      <span class="sw" style="border-color:#9A8B6A"></span>Contour lines</label>
+    <label><input type="checkbox" id="l-aoi">
+      <span class="sw" style="border-color:#7CFF9B;border-top-style:dashed"></span>Cached area</label>
+  </div>
+  <div class="lbl">Offline</div>
+  <button id="dl">Download map for offline use</button>
+  <div id="dlbar"><i></i></div>
+  <div id="dlmsg">Do this on wi-fi before you head out.</div>
+</div>
+
+<script src="leaflet.js"></script>
+<script>
+var TRAILS=/*__TRAILS__*/, AOI=/*__AOI__*/, BOUNDS=/*__BOUNDS__*/;
+
+var base={
+  img : L.tileLayer('tiles/img/{z}/{x}/{y}.jpg',{maxZoom:20,maxNativeZoom:19,
+        attribution:'Imagery &amp; LiDAR &copy; <a href="https://vcgi.vermont.gov/">VCGI</a>'}),
+  hill: L.tileLayer('tiles/hill/{z}/{x}/{y}.jpg',{maxZoom:20,maxNativeZoom:19,
+        attribution:'LiDAR &copy; <a href="https://vcgi.vermont.gov/">VCGI</a>'}),
+  osm : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
+        attribution:'&copy; OpenStreetMap contributors'})
+};
+var contours=L.tileLayer('tiles/cont/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:18,opacity:.7});
+
+var map=L.map('map',{layers:[base.img],zoomControl:false,preferCanvas:true,
+                     tap:false,zoomSnap:.5});
+map.fitBounds(BOUNDS,{padding:[24,24]});
+L.control.scale({imperial:true,metric:false,position:'bottomleft'}).addTo(map);
+
+// one line per trail, drawn heavier the more visits have crossed it
+var MAXP=TRAILS.features.reduce(function(m,f){return Math.max(m,f.properties.passes);},1);
+function weight(p){ return 2.6+1.25*Math.min(p,10); }
+function colour(p){
+  var t=MAXP>1?(Math.min(p,MAXP)-1)/(MAXP-1):1, a=[242,194,48], b=[255,122,56];
+  return 'rgb('+a.map(function(v,i){return Math.round(v+t*(b[i]-v));}).join(',')+')';
+}
+var casL=L.geoJSON(TRAILS,{style:function(f){
+  return {color:'#0C110F',weight:weight(f.properties.passes)+3,opacity:.5,
+          lineCap:'round',lineJoin:'round'};}}).addTo(map);
+var trkL=L.geoJSON(TRAILS,{style:function(f){
+  var p=f.properties.passes;
+  return {color:colour(p),weight:weight(p),opacity:.95,
+          lineCap:'round',lineJoin:'round'};}}).addTo(map);
+var onceL=L.geoJSON(TRAILS,{filter:function(f){return f.properties.passes===1;},
+  style:{color:'#6FC0EE',weight:2,opacity:.95,dashArray:'5 6'}});
+var aoiL=L.geoJSON(AOI,{style:{color:'#7CFF9B',weight:2,opacity:.75,
+                               dashArray:'7 6',fill:false}});
+
+// ---------- geolocation ----------
+var me=null, halo=null, following=false, watchId=null;
+var btn=document.getElementById('locate'), stat=document.getElementById('status');
+
+function place(p){
+  var ll=[p.coords.latitude,p.coords.longitude], acc=p.coords.accuracy;
+  if(!me){
+    halo=L.circle(ll,{radius:acc,color:'#3DA9FC',weight:1,opacity:.5,
+                      fillColor:'#3DA9FC',fillOpacity:.13}).addTo(map);
+    me=L.circleMarker(ll,{radius:7,color:'#fff',weight:2.5,
+                          fillColor:'#3DA9FC',fillOpacity:1}).addTo(map);
+  } else { me.setLatLng(ll); halo.setLatLng(ll).setRadius(acc); }
+  me.bringToFront();
+  btn.classList.remove('hunting'); btn.classList.add('on');
+  var ft=Math.round(acc*3.28084);
+  stat.innerHTML='<b>'+ll[0].toFixed(5)+', '+ll[1].toFixed(5)+'</b> &nbsp;&plusmn;'+ft+' ft';
+  if(following) map.setView(ll,Math.max(map.getZoom(),17),{animate:true});
+}
+function failed(e){
+  btn.classList.remove('hunting','on'); following=false;
+  stat.textContent = e.code===1 ? 'location permission denied'
+                   : e.code===3 ? 'location timed out — try again'
+                   : 'location unavailable';
+}
+btn.addEventListener('click',function(){
+  if(!navigator.geolocation){stat.textContent='no geolocation on this device';return;}
+  if(following){                       // second tap stops following
+    following=false; btn.classList.remove('on');
+    if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+    stat.textContent='following off'; return;
+  }
+  following=true; btn.classList.add('hunting'); stat.textContent='locating…';
+  navigator.geolocation.getCurrentPosition(place,failed,
+    {enableHighAccuracy:true,timeout:12000,maximumAge:0});
+  if(watchId===null) watchId=navigator.geolocation.watchPosition(place,failed,
+    {enableHighAccuracy:true,timeout:20000,maximumAge:2000});
+});
+map.on('dragstart',function(){ if(following){following=false;btn.classList.remove('on');} });
+
+// ---------- sheet ----------
+var sheet=document.getElementById('sheet');
+document.getElementById('layers').addEventListener('click',function(e){
+  e.stopPropagation(); sheet.classList.toggle('open');
+});
+map.on('click',function(){ sheet.classList.remove('open'); });
+sheet.addEventListener('click',function(e){ e.stopPropagation(); });
+
+document.getElementById('baseseg').addEventListener('click',function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  for(var k in base) map.removeLayer(base[k]);
+  base[b.dataset.b].addTo(map); base[b.dataset.b].bringToBack();
+  this.querySelectorAll('button').forEach(function(x){
+    x.setAttribute('aria-pressed',String(x===b));
+  });
+});
+function bind(id,layer){
+  document.getElementById(id).addEventListener('change',function(e){
+    if(e.target.checked){layer.addTo(map); if(me){me.bringToFront();halo.bringToFront();}}
+    else map.removeLayer(layer);
+  });
+}
+bind('l-trk',trkL); bind('l-once',onceL); bind('l-cont',contours); bind('l-aoi',aoiL);
+document.getElementById('l-trk').addEventListener('change',function(e){
+  if(e.target.checked) casL.addTo(map).bringToBack(); else map.removeLayer(casL);
+});
+
+// ---------- offline indicator + service worker ----------
+var off=document.getElementById('offline');
+function net(){ off.classList.toggle('show',!navigator.onLine); }
+addEventListener('online',net); addEventListener('offline',net); net();
+if('serviceWorker' in navigator)
+  addEventListener('load',function(){ navigator.serviceWorker.register('sw.js'); });
+
+// ---------- explicit offline download ----------
+var dl=document.getElementById('dl'), bar=document.getElementById('dlbar'),
+    fill=bar.querySelector('i'), msg=document.getElementById('dlmsg');
+
+function fmt(n){ return n>=1024 ? (n/1024).toFixed(1)+' MB' : n+' KB'; }
+
+caches.has('forest-tiles').then(function(has){
+  if(has) caches.open('forest-tiles').then(function(c){
+    c.keys().then(function(k){
+      if(k.length) msg.textContent=k.length+' tiles already stored';
+    });
+  });
+});
+
+dl.addEventListener('click',function(){
+  dl.disabled=true; bar.classList.add('show'); msg.textContent='reading tile list…';
+  fetch('tiles.json').then(function(r){
+    if(!r.ok) throw new Error('tiles.json missing');
+    return r.json();
+  }).then(function(list){
+    return caches.open('forest-tiles').then(function(cache){
+      var done=0, failed=0, i=0, CONC=6;
+      msg.textContent='0 / '+list.length+' tiles';
+      return new Promise(function(resolve){
+        function next(){
+          if(i>=list.length){ if(--CONC<=0) resolve([done,failed]); return; }
+          var u=list[i++];
+          cache.match(u).then(function(hit){
+            if(hit){ done++; step(); return next(); }
+            return fetch(u,{cache:'reload'}).then(function(res){
+              if(res.ok) return cache.put(u,res).then(function(){done++;});
+              failed++;
+            }).catch(function(){ failed++; }).then(function(){ step(); next(); });
+          });
+        }
+        function step(){
+          var pct=Math.round(100*(done+failed)/list.length);
+          fill.style.width=pct+'%';
+          if((done+failed)%25===0) msg.textContent=(done+failed)+' / '+list.length+' tiles';
+        }
+        for(var k=0;k<CONC;k++) next();
+      });
+    });
+  }).then(function(r){
+    fill.style.width='100%';
+    msg.textContent='stored '+r[0]+' tiles'+(r[1]?', '+r[1]+' failed':'')+
+                    ' — the map now works with no signal';
+    dl.textContent='Downloaded'; 
+  }).catch(function(e){
+    dl.disabled=false; bar.classList.remove('show');
+    msg.textContent='download failed: '+e.message;
+  });
+});
+</script>
+</body>
+</html>

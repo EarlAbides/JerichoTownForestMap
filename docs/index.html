@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0C110F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Town Forest">
+<title>Jericho Town Forest</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="leaflet.css">
+<style>
+  :root{
+    --bg:#0C110F; --panel:#121A16f2; --ink:#E9F0EA; --ink-2:#94A29A;
+    --rule:#2B3630; --blaze:#FF7A38; --slate:#6FC0EE; --gps:#3DA9FC;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,system-ui,"Segoe UI",sans-serif;
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-t:env(safe-area-inset-top,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:var(--sans);overscroll-behavior:none}
+  #map{position:absolute;inset:0}
+  .leaflet-container{background:var(--bg);font-family:var(--sans)}
+  .leaflet-control-attribution{background:#0C110Fcc!important;color:#7F8C85!important;
+    font-size:9px!important;padding:1px 5px!important}
+  .leaflet-control-attribution a{color:#7FA8BE!important}
+  .leaflet-control-zoom{display:none}
+
+  .fab{position:absolute;right:14px;width:56px;height:56px;border-radius:28px;
+    background:var(--panel);border:1px solid var(--rule);color:var(--ink);
+    display:grid;place-items:center;box-shadow:0 4px 20px #000a;
+    backdrop-filter:blur(10px);cursor:pointer;z-index:900;padding:0}
+  .fab:active{transform:scale(.94)}
+  .fab svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round}
+  #locate{bottom:calc(22px + var(--safe-b))}
+  #locate.on{color:var(--gps);border-color:var(--gps)}
+  #locate.hunting svg{animation:spin 1.1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #layers{bottom:calc(90px + var(--safe-b))}
+
+  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:950;background:var(--panel);
+    backdrop-filter:blur(16px);border-top:1px solid var(--rule);
+    padding:10px 16px calc(18px + var(--safe-b));color:var(--ink);
+    transform:translateY(101%);transition:transform .26s cubic-bezier(.4,0,.2,1)}
+  #sheet.open{transform:translateY(0)}
+  .grab{width:38px;height:4px;border-radius:2px;background:var(--rule);margin:0 auto 14px}
+  .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-2);margin:14px 0 8px}
+  .lbl:first-of-type{margin-top:0}
+  .seg{display:flex;gap:7px}
+  .seg button{flex:1;padding:11px 6px;background:transparent;color:var(--ink-2);
+    border:1px solid var(--rule);border-radius:8px;font-size:12.5px;font-family:var(--sans);
+    cursor:pointer}
+  .seg button[aria-pressed="true"]{background:#FF7A3820;color:var(--blaze);border-color:var(--blaze)}
+  .rows{display:flex;flex-direction:column;gap:2px}
+  .rows label{display:flex;align-items:center;gap:11px;padding:9px 2px;font-size:14.5px;cursor:pointer}
+  .rows input{width:19px;height:19px;accent-color:var(--blaze);margin:0}
+  .sw{width:17px;height:0;border-top:3px solid;flex:none}
+  #status{position:absolute;top:calc(10px + var(--safe-t));left:50%;transform:translateX(-50%);
+    z-index:900;background:var(--panel);border:1px solid var(--rule);border-radius:20px;
+    padding:6px 14px;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+    backdrop-filter:blur(10px);white-space:nowrap;max-width:calc(100vw - 28px);
+    overflow:hidden;text-overflow:ellipsis}
+  #status b{color:var(--ink);font-weight:600}
+  .off{position:absolute;top:calc(10px + var(--safe-t));right:14px;z-index:900;
+    background:#8A5A1Ecc;color:#FFE2C2;border-radius:12px;padding:4px 9px;
+    font-family:var(--mono);font-size:10px;display:none}
+  .off.show{display:block}
+  #dl{width:100%;padding:13px;background:transparent;color:var(--ink);
+    border:1px solid var(--rule);border-radius:9px;font-size:14px;
+    font-family:var(--sans);cursor:pointer}
+  #dl:active{transform:scale(.99)}
+  #dl:disabled{opacity:.55;cursor:default}
+  #dlbar{height:4px;border-radius:2px;background:var(--rule);margin-top:9px;
+    overflow:hidden;display:none}
+  #dlbar.show{display:block}
+  #dlbar i{display:block;height:100%;width:0;background:var(--blaze);
+    transition:width .18s linear}
+  #dlmsg{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);margin-top:7px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="status">locating&hellip;</div>
+<div class="off" id="offline">OFFLINE</div>
+
+<button class="fab" id="layers" aria-label="Layers">
+  <svg viewBox="0 0 24 24"><path d="M12 3 2 9l10 6 10-6-10-6Z"/><path d="m2 15 10 6 10-6"/></svg>
+</button>
+<button class="fab" id="locate" aria-label="Find my location">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+</button>
+
+<div id="sheet">
+  <div class="grab"></div>
+  <div class="lbl">Basemap</div>
+  <div class="seg" id="baseseg">
+    <button data-b="img" aria-pressed="true">Aerial</button>
+    <button data-b="hill" aria-pressed="false">Terrain</button>
+    <button data-b="osm" aria-pressed="false">Street</button>
+  </div>
+  <div class="lbl">Show</div>
+  <div class="rows">
+    <label><input type="checkbox" id="l-trk" checked>
+      <span class="sw" style="border-color:var(--blaze)"></span>Trails</label>
+    <label><input type="checkbox" id="l-once">
+      <span class="sw" style="border-color:var(--slate);border-top-style:dashed"></span>Flag once-walked</label>
+    <label><input type="checkbox" id="l-cont">
+      <span class="sw" style="border-color:#9A8B6A"></span>Contour lines</label>
+    <label><input type="checkbox" id="l-aoi">
+      <span class="sw" style="border-color:#7CFF9B;border-top-style:dashed"></span>Cached area</label>
+  </div>
+  <div class="lbl">Offline</div>
+  <button id="dl">Download map for offline use</button>
+  <div id="dlbar"><i></i></div>
+  <div id="dlmsg">Do this on wi-fi before you head out.</div>
+</div>
+
+<script src="leaflet.js"></script>
+<script>
+var TRAILS={"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"passes": 1, "length_m": 540.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9851045, 44.4991651], [-72.9850783, 44.4992797], [-72.9850807, 44.499451], [-72.9850458, 44.4995408], [-72.9850555, 44.4995948], [-72.9850922, 44.499668], [-72.9852455, 44.4997683], [-72.9853257, 44.4998713], [-72.9853808, 44.5000226], [-72.9854754, 44.5001401], [-72.9855295, 44.5002535], [-72.9855688, 44.500297], [-72.9856334, 44.5003263], [-72.9857482, 44.5003568], [-72.9858777, 44.5004145], [-72.9859718, 44.5004934], [-72.9860139, 44.5005116], [-72.9862441, 44.5005829], [-72.9864802, 44.5006237], [-72.9865577, 44.5006483], [-72.9868507, 44.5008307], [-72.9870409, 44.5008659], [-72.9872487, 44.5008493], [-72.9873495, 44.5008567], [-72.9876093, 44.5009243], [-72.9879617, 44.500979], [-72.9880698, 44.501007], [-72.9881617, 44.501046], [-72.9882937, 44.5011811], [-72.9885021, 44.5013044], [-72.9885501, 44.5013587], [-72.9886077, 44.5014617], [-72.9886451, 44.5014897], [-72.9887873, 44.5015341], [-72.9890183, 44.5015272], [-72.9891066, 44.5015431], [-72.9891586, 44.5015309], [-72.9891976, 44.5015389], [-72.9892244, 44.5015727], [-72.9892076, 44.5016327], [-72.9891581, 44.5016776], [-72.9889722, 44.5019644], [-72.9889151, 44.5019995], [-72.9888726, 44.5020042], [-72.9888571, 44.5020256]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 86.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9852052, 44.4988952], [-72.985265, 44.4988852], [-72.9854867, 44.4989079], [-72.9856971, 44.4988882], [-72.985794, 44.498868], [-72.9859578, 44.4988833], [-72.9862884, 44.4988799]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 26.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9852052, 44.4988952], [-72.9851904, 44.4989323], [-72.9851815, 44.4991317]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 7.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9851815, 44.4991317], [-72.9851045, 44.4991651]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 140.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9852052, 44.4988952], [-72.985032, 44.4988867], [-72.984665, 44.4989081], [-72.9840836, 44.4989923], [-72.9839482, 44.4990024], [-72.9836354, 44.4990522], [-72.9835556, 44.499079], [-72.9834923, 44.4991291]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 132.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9851045, 44.4991651], [-72.984642, 44.4991133], [-72.9845286, 44.4991303], [-72.9842557, 44.4991962], [-72.98405, 44.4992214], [-72.9837624, 44.4992791], [-72.9836924, 44.4992819], [-72.9835603, 44.4992254], [-72.9834923, 44.4992371]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 13.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9834923, 44.4991291], [-72.9835258, 44.4992], [-72.9834923, 44.4992371]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 255.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9834923, 44.4991291], [-72.9834234, 44.4991203], [-72.9831189, 44.4991748], [-72.9829758, 44.4992252], [-72.982861, 44.4992832], [-72.9826413, 44.4993483], [-72.9823558, 44.4995099], [-72.9821046, 44.4995831], [-72.9818426, 44.4997541], [-72.9815622, 44.4999933], [-72.981206, 44.5003932], [-72.9811725, 44.5004567], [-72.9811259, 44.5004862], [-72.9810741, 44.5004789]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 13.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9834923, 44.4992371], [-72.9833421, 44.4992924]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 22.3}, "geometry": {"type": "LineString", "coordinates": [[-72.9810741, 44.5004789], [-72.9810765, 44.5006026], [-72.9810468, 44.5006761]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 27.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9810741, 44.5004789], [-72.9810118, 44.500456], [-72.9809661, 44.5003562], [-72.9808916, 44.5002837]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 9.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9808916, 44.5002837], [-72.9807888, 44.5002413]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 6.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9807888, 44.5002413], [-72.9807137, 44.5002357]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 4.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9807137, 44.5002357], [-72.980671, 44.5002089]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 9.1}, "geometry": {"type": "LineString", "coordinates": [[-72.980671, 44.5002089], [-72.9807402, 44.500171], [-72.980714, 44.5001653]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 10.8}, "geometry": {"type": "LineString", "coordinates": [[-72.980714, 44.5001653], [-72.9807975, 44.500089]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 119.3}, "geometry": {"type": "LineString", "coordinates": [[-72.9807975, 44.500089], [-72.9808452, 44.5000172], [-72.9809384, 44.4999723], [-72.9809314, 44.499914], [-72.9808888, 44.4998546], [-72.9808001, 44.4998425], [-72.9806737, 44.4998753], [-72.9806406, 44.4998629], [-72.9806521, 44.4998302], [-72.9806259, 44.4997948], [-72.9805641, 44.4997675], [-72.9802963, 44.4997467], [-72.9799875, 44.4997468], [-72.9799249, 44.4997191], [-72.9799153, 44.4997265]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 156.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9799909, 44.4993271], [-72.9800443, 44.4993284], [-72.9801893, 44.4992993], [-72.9802837, 44.4992979], [-72.9804984, 44.4993465], [-72.9805963, 44.4993563], [-72.9806423, 44.4993331], [-72.9806511, 44.4992525], [-72.9806997, 44.4991628], [-72.9807016, 44.4991144], [-72.9806631, 44.4990809], [-72.9805204, 44.4990297], [-72.9804286, 44.4990151], [-72.980355, 44.4990239], [-72.980121, 44.4991209], [-72.980009, 44.4992471], [-72.9799909, 44.4993271]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 60.4}, "geometry": {"type": "LineString", "coordinates": [[-72.980671, 44.5002089], [-72.9806112, 44.5002232], [-72.980416, 44.5002049], [-72.9802836, 44.5002057], [-72.9800338, 44.500285], [-72.9799405, 44.5002989]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 45.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9799909, 44.4993271], [-72.9798847, 44.4994292], [-72.9798678, 44.4994681], [-72.9798649, 44.499705]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 167.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9799405, 44.5002989], [-72.9799383, 44.5003428], [-72.9798411, 44.5004596], [-72.9797891, 44.5004997], [-72.9796705, 44.5005385], [-72.9796499, 44.5005556], [-72.9795681, 44.5005586], [-72.9794822, 44.5005808], [-72.9793076, 44.5005627], [-72.9792042, 44.5005661], [-72.9790147, 44.5006839], [-72.9788862, 44.5007321], [-72.9788043, 44.5007967], [-72.9786925, 44.5008406], [-72.9786133, 44.5008975], [-72.9785548, 44.5009802], [-72.9784738, 44.5010175], [-72.9784305, 44.5010797], [-72.9783535, 44.5010908]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 21.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9799405, 44.5002989], [-72.9796836, 44.500241]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 19.8}, "geometry": {"type": "LineString", "coordinates": [[-72.9796836, 44.500241], [-72.979467, 44.5001523]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 5.8}, "geometry": {"type": "LineString", "coordinates": [[-72.979467, 44.5001523], [-72.9794115, 44.500119]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 51.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9798649, 44.499705], [-72.9798048, 44.4997257], [-72.9797759, 44.4998383], [-72.9797375, 44.4998795], [-72.9794676, 44.5000378]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 5.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9794676, 44.5000378], [-72.9794251, 44.5000764]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 4.8}, "geometry": {"type": "LineString", "coordinates": [[-72.9794251, 44.5000764], [-72.9794115, 44.500119]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 103.7}, "geometry": {"type": "LineString", "coordinates": [[-72.9794115, 44.500119], [-72.9793175, 44.5001425], [-72.9791188, 44.5002317], [-72.9790053, 44.5002455], [-72.9787609, 44.5002496], [-72.9784121, 44.5003142], [-72.9782839, 44.5003554], [-72.9782584, 44.5003727], [-72.9782596, 44.5003915], [-72.9782127, 44.5003807]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 2.8}, "geometry": {"type": "LineString", "coordinates": [[-72.9782127, 44.5003807], [-72.9782209, 44.5004048]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 34.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9782209, 44.5004048], [-72.978184, 44.5004044], [-72.9780315, 44.50045], [-72.9778915, 44.5004733], [-72.9778497, 44.5005329]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 133.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9775978, 44.5026385], [-72.977797, 44.502537], [-72.9778705, 44.5024847], [-72.9780872, 44.5022601], [-72.9782357, 44.5021336], [-72.9783136, 44.5020873], [-72.9784071, 44.5020737], [-72.9785252, 44.5020861], [-72.9787535, 44.5021762], [-72.978862, 44.5022393]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 274.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9784795, 44.5047981], [-72.9785588, 44.5047965], [-72.9787256, 44.504743], [-72.9787677, 44.5046864], [-72.9787518, 44.5046216], [-72.9786721, 44.5044467], [-72.9785521, 44.5042567], [-72.9784551, 44.5040401], [-72.9783333, 44.5038367], [-72.9782494, 44.5036542], [-72.9780025, 44.5032652], [-72.9779126, 44.5030828], [-72.9776321, 44.5027249], [-72.9775978, 44.5026385]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 188.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9784795, 44.5047981], [-72.9784548, 44.5046875], [-72.9783493, 44.5044423], [-72.9783186, 44.5044032], [-72.9782506, 44.5043566], [-72.9781748, 44.5043203], [-72.9780796, 44.5043053], [-72.9779537, 44.5043101], [-72.9778809, 44.5042995], [-72.9777541, 44.5042407], [-72.9775806, 44.5041163], [-72.977447, 44.5040506], [-72.9769769, 44.5039348], [-72.9768019, 44.5038796], [-72.9767414, 44.5038803]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 7.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9784795, 44.5047981], [-72.9783842, 44.5047935]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 11.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9783842, 44.5047935], [-72.9782539, 44.5047549]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 159.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9782539, 44.5047549], [-72.978175, 44.5046997], [-72.978172, 44.5047067], [-72.9781501, 44.5046865], [-72.9780227, 44.5046337], [-72.9778027, 44.5045159], [-72.9776513, 44.5044045], [-72.9775574, 44.5043565], [-72.9772536, 44.5043315], [-72.977017, 44.5042486], [-72.9769546, 44.5042061], [-72.9769583, 44.5042136], [-72.9768862, 44.5041011], [-72.9767401, 44.5039546]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 2.7}, "geometry": {"type": "LineString", "coordinates": [[-72.9767401, 44.5039546], [-72.976728, 44.503932]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 5.9}, "geometry": {"type": "LineString", "coordinates": [[-72.976728, 44.503932], [-72.9767414, 44.5038803]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 32.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9783535, 44.5010908], [-72.9783542, 44.5012875], [-72.9783128, 44.5013299], [-72.9782528, 44.5013427]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 6.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9783535, 44.5010908], [-72.9782868, 44.5010616]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 8.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9782868, 44.5010616], [-72.9782353, 44.5009938]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 49.1}, "geometry": {"type": "LineString", "coordinates": [[-72.9782353, 44.5009938], [-72.97813, 44.5009225], [-72.9780475, 44.5008371], [-72.9780228, 44.5007963], [-72.9780351, 44.5007585], [-72.9780206, 44.5007263], [-72.9780015, 44.5007046], [-72.9779518, 44.500693], [-72.9779062, 44.5006492]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 4.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9779062, 44.5006492], [-72.9779184, 44.5006062]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 10.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9779184, 44.5006062], [-72.9778592, 44.5005756], [-72.9778497, 44.5005329]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 93.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9782528, 44.5013427], [-72.9782672, 44.5013969], [-72.9781283, 44.5015518], [-72.9780926, 44.5016369], [-72.9780181, 44.5016552], [-72.9779697, 44.5016546], [-72.9779294, 44.5016791], [-72.9778695, 44.5016418], [-72.9775378, 44.5016841], [-72.9774215, 44.5016847]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 8.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9782528, 44.5013427], [-72.9781525, 44.5013359]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 11.8}, "geometry": {"type": "LineString", "coordinates": [[-72.9781525, 44.5013359], [-72.9780165, 44.5013789]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 38.3}, "geometry": {"type": "LineString", "coordinates": [[-72.9780165, 44.5013789], [-72.9777584, 44.5013896], [-72.9775952, 44.5014378], [-72.9775483, 44.5014435]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 6.3}, "geometry": {"type": "LineString", "coordinates": [[-72.9775483, 44.5014435], [-72.9774699, 44.5014331]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 5.7}, "geometry": {"type": "LineString", "coordinates": [[-72.9774699, 44.5014331], [-72.9774089, 44.5014597]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 4.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9778497, 44.5005329], [-72.9777978, 44.5005166]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 11.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9777978, 44.5005166], [-72.9777465, 44.5005402], [-72.9776664, 44.500558]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 8.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9776664, 44.500558], [-72.9775578, 44.5005534]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 110.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9775578, 44.5005534], [-72.9773869, 44.5005893], [-72.9771627, 44.5005583], [-72.9770759, 44.5005748], [-72.9770054, 44.500619], [-72.9769736, 44.5006798], [-72.9769439, 44.5008141], [-72.9768325, 44.5009534], [-72.9767501, 44.501021], [-72.9766154, 44.5010908]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 78.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9775978, 44.5026385], [-72.977242, 44.5025808], [-72.9770342, 44.502561], [-72.9769297, 44.502572], [-72.9766935, 44.5026513], [-72.9766426, 44.5026593]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 3.1}, "geometry": {"type": "LineString", "coordinates": [[-72.9766426, 44.5026593], [-72.9766043, 44.5026525]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 8.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9766043, 44.5026525], [-72.9765577, 44.5026209], [-72.9765147, 44.5026205]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 64.1}, "geometry": {"type": "LineString", "coordinates": [[-72.9774089, 44.5014597], [-72.977421, 44.5014143], [-72.977411, 44.501384], [-72.9773642, 44.5013439], [-72.9772879, 44.5013029], [-72.9769649, 44.5012367], [-72.9767907, 44.5011747]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 7.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9767907, 44.5011747], [-72.976697, 44.5011589]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 10.0}, "geometry": {"type": "LineString", "coordinates": [[-72.976697, 44.5011589], [-72.9766154, 44.5010908]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 19.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9774215, 44.5016847], [-72.9774207, 44.5016239], [-72.9773893, 44.5015164]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 6.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9773893, 44.5015164], [-72.9774089, 44.5014597]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 4.8}, "geometry": {"type": "LineString", "coordinates": [[-72.9774215, 44.5016847], [-72.9773617, 44.5016765]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 40.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9773617, 44.5016765], [-72.9768512, 44.5016858]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 71.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9768512, 44.5016858], [-72.9765367, 44.5016635], [-72.9762537, 44.5017103], [-72.9759605, 44.5017207]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 129.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9774089, 44.5014597], [-72.9771777, 44.501483], [-72.9768704, 44.5014614], [-72.9767826, 44.5014869], [-72.9766196, 44.5015011], [-72.9763005, 44.5014598], [-72.9761737, 44.5014572], [-72.976077, 44.5014775], [-72.9759198, 44.501541], [-72.9758597, 44.5015947]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 92.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9767414, 44.5038803], [-72.9765258, 44.5037951], [-72.9761909, 44.5037205], [-72.9760828, 44.5036714], [-72.9759128, 44.5035592], [-72.9757338, 44.5034843]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 22.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9766154, 44.5010908], [-72.976543, 44.5010859], [-72.97648, 44.5010977], [-72.9763349, 44.5011022]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 3.7}, "geometry": {"type": "LineString", "coordinates": [[-72.9763349, 44.5011022], [-72.976294, 44.5010863]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 383.7}, "geometry": {"type": "LineString", "coordinates": [[-72.976294, 44.5010863], [-72.9762263, 44.5010195], [-72.9761433, 44.5009908], [-72.9755256, 44.5010468], [-72.9752559, 44.500993], [-72.9750407, 44.5010236], [-72.974786, 44.5009917], [-72.9745124, 44.5009909], [-72.9743331, 44.500941], [-72.974222, 44.5009494], [-72.9741815, 44.5009839], [-72.9741281, 44.5011187], [-72.9740411, 44.5011845], [-72.9739335, 44.50121], [-72.973735, 44.5012181], [-72.973659, 44.5012314], [-72.9736209, 44.5012513], [-72.9735744, 44.5013421], [-72.9734278, 44.501514], [-72.9732948, 44.5016306], [-72.9731095, 44.5017377], [-72.9730167, 44.5018257], [-72.9729471, 44.5019479], [-72.9728306, 44.5020792], [-72.9727824, 44.5021586], [-72.9727458, 44.5022991], [-72.9727783, 44.5023659]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 8.7}, "geometry": {"type": "LineString", "coordinates": [[-72.9727783, 44.5023659], [-72.972859, 44.5024188]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 32.4}, "geometry": {"type": "LineString", "coordinates": [[-72.972859, 44.5024188], [-72.9729481, 44.5024367], [-72.973262, 44.5024148]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 21.9}, "geometry": {"type": "LineString", "coordinates": [[-72.973262, 44.5024148], [-72.9735328, 44.5024525]]}}, {"type": "Feature", "properties": {"passes": 8, "length_m": 4.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9735328, 44.5024525], [-72.9735926, 44.5024405]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 58.3}, "geometry": {"type": "LineString", "coordinates": [[-72.9765147, 44.5026205], [-72.9765241, 44.5025761], [-72.9764778, 44.5025183], [-72.976348, 44.5024484], [-72.9762847, 44.5024437], [-72.9760896, 44.5024672], [-72.9759353, 44.5024597]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 73.7}, "geometry": {"type": "LineString", "coordinates": [[-72.9765147, 44.5026205], [-72.9764221, 44.5026781], [-72.9763104, 44.5027737], [-72.9761317, 44.5028845], [-72.9759991, 44.5030048], [-72.9759245, 44.5031218]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 18.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9759245, 44.5031218], [-72.9758661, 44.5032837]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 19.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9758661, 44.5032837], [-72.9757243, 44.5034266]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 6.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9757243, 44.5034266], [-72.9757338, 44.5034843]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 17.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9759605, 44.5017207], [-72.975967, 44.5016621], [-72.9758597, 44.5015947]]}}, {"type": "Feature", "properties": {"passes": 6, "length_m": 71.1}, "geometry": {"type": "LineString", "coordinates": [[-72.9759605, 44.5017207], [-72.9759293, 44.5017593], [-72.9757741, 44.501846], [-72.9757244, 44.5018649], [-72.9754855, 44.5019138], [-72.9753569, 44.5019713], [-72.97523, 44.5020626]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 26.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9755574, 44.5025125], [-72.9756357, 44.5025097], [-72.9758866, 44.5024609]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 205.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9758597, 44.5015947], [-72.9756848, 44.5016095], [-72.9751302, 44.5017727], [-72.9750454, 44.5018195], [-72.9749172, 44.5018603], [-72.9748482, 44.5019085], [-72.9746709, 44.5019971], [-72.9743241, 44.5020966], [-72.9740194, 44.5022193], [-72.9738059, 44.5023287], [-72.9736682, 44.5023842], [-72.9735926, 44.5024405]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 22.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9757338, 44.5034843], [-72.9756803, 44.50348], [-72.9756481, 44.5034907], [-72.975502, 44.5035829]]}}, {"type": "Feature", "properties": {"passes": 4, "length_m": 4.1}, "geometry": {"type": "LineString", "coordinates": [[-72.975502, 44.5035829], [-72.9754743, 44.5036144]]}}, {"type": "Feature", "properties": {"passes": 8, "length_m": 9.8}, "geometry": {"type": "LineString", "coordinates": [[-72.9754743, 44.5036144], [-72.9754065, 44.5036329], [-72.9753559, 44.5036283]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 3.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9755574, 44.5025125], [-72.9755442, 44.5025465]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 4.3}, "geometry": {"type": "LineString", "coordinates": [[-72.9755442, 44.5025465], [-72.9754974, 44.5025651]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 95.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9754974, 44.5025651], [-72.97526, 44.5026136], [-72.9751973, 44.5026467], [-72.9751612, 44.5026836], [-72.9751046, 44.5029825], [-72.9751132, 44.5032588]]}}, {"type": "Feature", "properties": {"passes": 1, "length_m": 7.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9751132, 44.5032588], [-72.9750801, 44.503321]]}}, {"type": "Feature", "properties": {"passes": 7, "length_m": 2.5}, "geometry": {"type": "LineString", "coordinates": [[-72.9750801, 44.503321], [-72.9750509, 44.5033294]]}}, {"type": "Feature", "properties": {"passes": 8, "length_m": 3.7}, "geometry": {"type": "LineString", "coordinates": [[-72.9750509, 44.5033294], [-72.9750285, 44.5033584]]}}, {"type": "Feature", "properties": {"passes": 2, "length_m": 22.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9755574, 44.5025125], [-72.9754466, 44.5023249]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 14.9}, "geometry": {"type": "LineString", "coordinates": [[-72.9754466, 44.5023249], [-72.9753447, 44.5022127]]}}, {"type": "Feature", "properties": {"passes": 3, "length_m": 13.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9753447, 44.5022127], [-72.9752772, 44.5020998]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 5.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9752772, 44.5020998], [-72.97523, 44.5020626]]}}, {"type": "Feature", "properties": {"passes": 8, "length_m": 101.8}, "geometry": {"type": "LineString", "coordinates": [[-72.9753559, 44.5036283], [-72.9753584, 44.5037075], [-72.9753187, 44.5037844], [-72.9749102, 44.5042104], [-72.9747567, 44.5044221]]}}, {"type": "Feature", "properties": {"passes": 8, "length_m": 40.0}, "geometry": {"type": "LineString", "coordinates": [[-72.9753559, 44.5036283], [-72.9751637, 44.5034952], [-72.9750612, 44.5034069], [-72.9750285, 44.5033584]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 92.1}, "geometry": {"type": "LineString", "coordinates": [[-72.97523, 44.5020626], [-72.9749481, 44.5021119], [-72.9748536, 44.5021519], [-72.9747561, 44.5022724], [-72.9745558, 44.5024633], [-72.9743605, 44.5025519]]}}, {"type": "Feature", "properties": {"passes": 5, "length_m": 30.2}, "geometry": {"type": "LineString", "coordinates": [[-72.9743605, 44.5025519], [-72.9741484, 44.5027779]]}}, {"type": "Feature", "properties": {"passes": 7, "length_m": 6.1}, "geometry": {"type": "LineString", "coordinates": [[-72.9741484, 44.5027779], [-72.9740712, 44.5027825]]}}, {"type": "Feature", "properties": {"passes": 8, "length_m": 104.4}, "geometry": {"type": "LineString", "coordinates": [[-72.9750285, 44.5033584], [-72.9748233, 44.5033185], [-72.9745069, 44.503209], [-72.974427, 44.5031663], [-72.9741369, 44.5029048], [-72.9740712, 44.5027825]]}}, {"type": "Feature", "properties": {"passes": 8, "length_m": 57.6}, "geometry": {"type": "LineString", "coordinates": [[-72.9740712, 44.5027825], [-72.9740063, 44.5027875], [-72.973834, 44.5026769], [-72.9737126, 44.5025746], [-72.9736138, 44.5025125], [-72.9735855, 44.5024801], [-72.9735926, 44.5024405]]}}]}, AOI={"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [[[-72.99355, 44.502444], [-72.992413, 44.500286], [-72.989666, 44.500163], [-72.98722, 44.500362], [-72.986147, 44.500026], [-72.988851, 44.497072], [-72.981834, 44.490674], [-72.973058, 44.49551], [-72.977993, 44.497776], [-72.976749, 44.50024], [-72.973187, 44.500133], [-72.97205, 44.501969], [-72.971985, 44.502122], [-72.97868, 44.505474], [-72.980161, 44.504173], [-72.978466, 44.503071], [-72.980633, 44.501479], [-72.981427, 44.500607], [-72.984495, 44.500316], [-72.990847, 44.503178], [-72.993464, 44.502535], [-72.99355, 44.502444]]]}}, BOUNDS=[[44.498868, -72.9892244], [44.5047981, -72.9727458]];
+
+var base={
+  img : L.tileLayer('tiles/img/{z}/{x}/{y}.jpg',{maxZoom:20,maxNativeZoom:19,
+        attribution:'Imagery &amp; LiDAR &copy; <a href="https://vcgi.vermont.gov/">VCGI</a>'}),
+  hill: L.tileLayer('tiles/hill/{z}/{x}/{y}.jpg',{maxZoom:20,maxNativeZoom:19,
+        attribution:'LiDAR &copy; <a href="https://vcgi.vermont.gov/">VCGI</a>'}),
+  osm : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
+        attribution:'&copy; OpenStreetMap contributors'})
+};
+var contours=L.tileLayer('tiles/cont/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:18,opacity:.7});
+
+var map=L.map('map',{layers:[base.img],zoomControl:false,preferCanvas:true,
+                     tap:false,zoomSnap:.5});
+map.fitBounds(BOUNDS,{padding:[24,24]});
+L.control.scale({imperial:true,metric:false,position:'bottomleft'}).addTo(map);
+
+// one line per trail, drawn heavier the more visits have crossed it
+var MAXP=TRAILS.features.reduce(function(m,f){return Math.max(m,f.properties.passes);},1);
+function weight(p){ return 2.6+1.25*Math.min(p,10); }
+function colour(p){
+  var t=MAXP>1?(Math.min(p,MAXP)-1)/(MAXP-1):1, a=[242,194,48], b=[255,122,56];
+  return 'rgb('+a.map(function(v,i){return Math.round(v+t*(b[i]-v));}).join(',')+')';
+}
+var casL=L.geoJSON(TRAILS,{style:function(f){
+  return {color:'#0C110F',weight:weight(f.properties.passes)+3,opacity:.5,
+          lineCap:'round',lineJoin:'round'};}}).addTo(map);
+var trkL=L.geoJSON(TRAILS,{style:function(f){
+  var p=f.properties.passes;
+  return {color:colour(p),weight:weight(p),opacity:.95,
+          lineCap:'round',lineJoin:'round'};}}).addTo(map);
+var onceL=L.geoJSON(TRAILS,{filter:function(f){return f.properties.passes===1;},
+  style:{color:'#6FC0EE',weight:2,opacity:.95,dashArray:'5 6'}});
+var aoiL=L.geoJSON(AOI,{style:{color:'#7CFF9B',weight:2,opacity:.75,
+                               dashArray:'7 6',fill:false}});
+
+// ---------- geolocation ----------
+var me=null, halo=null, following=false, watchId=null;
+var btn=document.getElementById('locate'), stat=document.getElementById('status');
+
+function place(p){
+  var ll=[p.coords.latitude,p.coords.longitude], acc=p.coords.accuracy;
+  if(!me){
+    halo=L.circle(ll,{radius:acc,color:'#3DA9FC',weight:1,opacity:.5,
+                      fillColor:'#3DA9FC',fillOpacity:.13}).addTo(map);
+    me=L.circleMarker(ll,{radius:7,color:'#fff',weight:2.5,
+                          fillColor:'#3DA9FC',fillOpacity:1}).addTo(map);
+  } else { me.setLatLng(ll); halo.setLatLng(ll).setRadius(acc); }
+  me.bringToFront();
+  btn.classList.remove('hunting'); btn.classList.add('on');
+  var ft=Math.round(acc*3.28084);
+  stat.innerHTML='<b>'+ll[0].toFixed(5)+', '+ll[1].toFixed(5)+'</b> &nbsp;&plusmn;'+ft+' ft';
+  if(following) map.setView(ll,Math.max(map.getZoom(),17),{animate:true});
+}
+function failed(e){
+  btn.classList.remove('hunting','on'); following=false;
+  stat.textContent = e.code===1 ? 'location permission denied'
+                   : e.code===3 ? 'location timed out — try again'
+                   : 'location unavailable';
+}
+btn.addEventListener('click',function(){
+  if(!navigator.geolocation){stat.textContent='no geolocation on this device';return;}
+  if(following){                       // second tap stops following
+    following=false; btn.classList.remove('on');
+    if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+    stat.textContent='following off'; return;
+  }
+  following=true; btn.classList.add('hunting'); stat.textContent='locating…';
+  navigator.geolocation.getCurrentPosition(place,failed,
+    {enableHighAccuracy:true,timeout:12000,maximumAge:0});
+  if(watchId===null) watchId=navigator.geolocation.watchPosition(place,failed,
+    {enableHighAccuracy:true,timeout:20000,maximumAge:2000});
+});
+map.on('dragstart',function(){ if(following){following=false;btn.classList.remove('on');} });
+
+// ---------- sheet ----------
+var sheet=document.getElementById('sheet');
+document.getElementById('layers').addEventListener('click',function(e){
+  e.stopPropagation(); sheet.classList.toggle('open');
+});
+map.on('click',function(){ sheet.classList.remove('open'); });
+sheet.addEventListener('click',function(e){ e.stopPropagation(); });
+
+document.getElementById('baseseg').addEventListener('click',function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  for(var k in base) map.removeLayer(base[k]);
+  base[b.dataset.b].addTo(map); base[b.dataset.b].bringToBack();
+  this.querySelectorAll('button').forEach(function(x){
+    x.setAttribute('aria-pressed',String(x===b));
+  });
+});
+function bind(id,layer){
+  document.getElementById(id).addEventListener('change',function(e){
+    if(e.target.checked){layer.addTo(map); if(me){me.bringToFront();halo.bringToFront();}}
+    else map.removeLayer(layer);
+  });
+}
+bind('l-trk',trkL); bind('l-once',onceL); bind('l-cont',contours); bind('l-aoi',aoiL);
+document.getElementById('l-trk').addEventListener('change',function(e){
+  if(e.target.checked) casL.addTo(map).bringToBack(); else map.removeLayer(casL);
+});
+
+// ---------- offline indicator + service worker ----------
+var off=document.getElementById('offline');
+function net(){ off.classList.toggle('show',!navigator.onLine); }
+addEventListener('online',net); addEventListener('offline',net); net();
+if('serviceWorker' in navigator)
+  addEventListener('load',function(){ navigator.serviceWorker.register('sw.js'); });
+
+// ---------- explicit offline download ----------
+var dl=document.getElementById('dl'), bar=document.getElementById('dlbar'),
+    fill=bar.querySelector('i'), msg=document.getElementById('dlmsg');
+
+function fmt(n){ return n>=1024 ? (n/1024).toFixed(1)+' MB' : n+' KB'; }
+
+caches.has('forest-tiles').then(function(has){
+  if(has) caches.open('forest-tiles').then(function(c){
+    c.keys().then(function(k){
+      if(k.length) msg.textContent=k.length+' tiles already stored';
+    });
+  });
+});
+
+dl.addEventListener('click',function(){
+  dl.disabled=true; bar.classList.add('show'); msg.textContent='reading tile list…';
+  fetch('tiles.json').then(function(r){
+    if(!r.ok) throw new Error('tiles.json missing');
+    return r.json();
+  }).then(function(list){
+    return caches.open('forest-tiles').then(function(cache){
+      var done=0, failed=0, i=0, CONC=6;
+      msg.textContent='0 / '+list.length+' tiles';
+      return new Promise(function(resolve){
+        function next(){
+          if(i>=list.length){ if(--CONC<=0) resolve([done,failed]); return; }
+          var u=list[i++];
+          cache.match(u).then(function(hit){
+            if(hit){ done++; step(); return next(); }
+            return fetch(u,{cache:'reload'}).then(function(res){
+              if(res.ok) return cache.put(u,res).then(function(){done++;});
+              failed++;
+            }).catch(function(){ failed++; }).then(function(){ step(); next(); });
+          });
+        }
+        function step(){
+          var pct=Math.round(100*(done+failed)/list.length);
+          fill.style.width=pct+'%';
+          if((done+failed)%25===0) msg.textContent=(done+failed)+' / '+list.length+' tiles';
+        }
+        for(var k=0;k<CONC;k++) next();
+      });
+    });
+  }).then(function(r){
+    fill.style.width='100%';
+    msg.textContent='stored '+r[0]+' tiles'+(r[1]?', '+r[1]+' failed':'')+
+                    ' — the map now works with no signal';
+    dl.textContent='Downloaded'; 
+  }).catch(function(e){
+    dl.disabled=false; bar.classList.remove('show');
+    msg.textContent='download failed: '+e.message;
+  });
+});
+</script>
+</body>
+</html>

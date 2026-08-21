@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Raw Apple Watch exports: contain home location and timestamps. Never commit.
+Exports/
+
+# Unclipped tracks derived from them: same problem.
+data/raw_tracks.geojson
+
+# Scratch API responses
+data/cache/

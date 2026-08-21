@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jericho Town Forest — trail map</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<style>
+  :root{
+    --panel:#111714ee; --ink:#E6EDE8; --ink-2:#93A099;
+    --rule:#2C3733; --blaze:#FF7A38; --amber:#F2C230; --slate:#6FC0EE;
+    --mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  html,body{margin:0;height:100%;background:#0C110F;font-family:var(--sans)}
+  #map{position:absolute;inset:0}
+  .pane{
+    position:absolute;z-index:1000;background:var(--panel);color:var(--ink);
+    border:1px solid var(--rule);border-radius:3px;backdrop-filter:blur(9px);
+    font-size:13px;box-shadow:0 6px 26px #0009;
+  }
+  #ctl{top:12px;left:12px;width:250px;max-height:calc(100% - 24px);overflow-y:auto}
+  #ctl h1{margin:0;padding:12px 14px 10px;font-size:13px;letter-spacing:.09em;
+    text-transform:uppercase;font-family:var(--mono);border-bottom:1px solid var(--rule);font-weight:600}
+  .grp{padding:11px 14px;border-bottom:1px solid var(--rule)}
+  .grp:last-child{border-bottom:0}
+  .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--ink-2);margin-bottom:8px}
+  label.row{display:flex;align-items:center;gap:9px;padding:3px 0;cursor:pointer;line-height:1.35}
+  label.row:hover{color:#fff}
+  input[type=radio],input[type=checkbox]{accent-color:var(--blaze);margin:0;flex:none}
+  .swatch{width:16px;height:0;border-top:3px solid;flex:none}
+  input[type=range]{width:100%;accent-color:var(--blaze)}
+  .val{font-family:var(--mono);font-size:11px;color:var(--ink-2);float:right}
+  #legend{bottom:12px;left:12px;padding:11px 14px;max-width:250px}
+  #legend .lg{display:flex;align-items:center;gap:10px;padding:2.5px 0;font-size:12px}
+  #legend .bar{width:34px;flex:none;border-radius:2px}
+  #legend .cap{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);
+    margin-top:8px;line-height:1.5}
+  #readout{bottom:12px;right:12px;padding:8px 12px;font-family:var(--mono);
+    font-size:11.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .leaflet-container{background:#0C110F}
+  .leaflet-control-attribution{background:#11171499!important;color:#93A099!important;font-size:10px}
+  .leaflet-control-attribution a{color:#8FB8CE!important}
+  .hint{font-size:11.5px;color:var(--ink-2);line-height:1.45;padding:0 14px 12px}
+  .tot{font-family:var(--mono);font-size:11px;color:var(--ink-2);line-height:1.7;
+    font-variant-numeric:tabular-nums}
+  .tot b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="pane" id="ctl">
+  <h1>Jericho Town Forest</h1>
+
+  <div class="grp">
+    <div class="lbl">Basemap</div>
+    <label class="row"><input type="radio" name="base" value="img" checked>2024 orthoimagery</label>
+    <label class="row"><input type="radio" name="base" value="hill">LiDAR bare&#8209;earth hillshade</label>
+    <label class="row"><input type="radio" name="base" value="osm">OpenStreetMap</label>
+  </div>
+
+  <div class="grp">
+    <div class="lbl">Overlays</div>
+    <label class="row"><input type="checkbox" id="ov-cont">20&nbsp;ft LiDAR contours</label>
+    <label class="row"><input type="checkbox" id="ov-hill">Hillshade blend</label>
+    <div style="margin-top:7px">
+      <span class="lbl" style="margin:0">Blend<span class="val" id="opv">55%</span></span>
+      <input type="range" id="op" min="0" max="100" value="55">
+    </div>
+  </div>
+
+  <div class="grp">
+    <div class="lbl">Trails</div>
+    <div style="margin-bottom:4px">
+      <span class="lbl" style="margin:0">Walked at least<span class="val" id="minv">1&times;</span></span>
+      <input type="range" id="minp" min="1" max="8" value="1">
+    </div>
+    <label class="row"><input type="checkbox" id="t-once">
+      <span class="swatch" style="border-color:var(--slate);border-top-style:dashed"></span>
+      Flag once&#8209;walked</label>
+  </div>
+
+  <div class="grp">
+    <div class="lbl">Network</div>
+    <div class="tot" id="tot"></div>
+  </div>
+
+  <div class="hint">Line weight is how many separate visits crossed that stretch of
+  trail. Switch to the hillshade to spot trail you have not walked yet &mdash;
+  bare&#8209;earth LiDAR strips the canopy, so footpaths read as shallow cuts in
+  the terrain.</div>
+</div>
+
+<div class="pane" id="legend">
+  <div class="lbl">Visits</div>
+  <div id="legrows"></div>
+  <div class="cap">Thicker &equals; more travelled.<br>Merged from every recorded walk.</div>
+</div>
+
+<div class="pane" id="readout">move cursor over map</div>
+
+<script src="vendor/leaflet.js"></script>
+<script>
+var TRAILS = /*__TRAILS__*/;
+var BOUNDS = /*__BOUNDS__*/;
+
+var VCGI = 'https://maps.vcgi.vermont.gov/arcgis/rest/services/EGC_services/';
+var ATTR_VT = 'Imagery &amp; LiDAR: <a href="https://vcgi.vermont.gov/">VCGI</a>';
+
+var base = {
+  img: L.tileLayer(VCGI+'IMG_VCGI_CLR2024_WM_CACHE/ImageServer/tile/{z}/{y}/{x}',
+        {maxZoom:20, maxNativeZoom:19, attribution:ATTR_VT}),
+  hill: L.tileLayer(VCGI+'IMG_VCGI_LIDARHILLSHD_WM_CACHE_v1/ImageServer/tile/{z}/{y}/{x}',
+        {maxZoom:20, maxNativeZoom:19, attribution:ATTR_VT}),
+  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {maxZoom:19, attribution:'&copy; OpenStreetMap contributors'})
+};
+
+var contours = L.tileLayer(VCGI+'MAP_VCGI_LIDARCONTOURS_WM_CACHE_v1/MapServer/tile/{z}/{y}/{x}',
+        {maxZoom:20, maxNativeZoom:19, opacity:.75});
+var hillBlend = L.tileLayer(VCGI+'IMG_VCGI_LIDARHILLSHD_WM_CACHE_v1/ImageServer/tile/{z}/{y}/{x}',
+        {maxZoom:20, maxNativeZoom:19, opacity:.55});
+
+var map = L.map('map', {layers:[base.img], zoomControl:true, preferCanvas:true});
+map.fitBounds(BOUNDS, {padding:[30,30]});
+L.control.scale({imperial:true, metric:true, position:'bottomright'}).addTo(map);
+
+// ---- merged trails, drawn heavier the more often they have been walked ----
+var MAXP = TRAILS.features.reduce(function(m,f){
+  return Math.max(m, f.properties.passes); }, 1);
+
+function weight(p){ return 2.2 + 1.15*Math.min(p, 10); }
+function colour(p){
+  // amber for a single visit, warming to blaze for the well-worn core
+  var t = MAXP > 1 ? (Math.min(p, MAXP)-1)/(MAXP-1) : 1;
+  var a = [242,194,48], b = [255,122,56];
+  return 'rgb('+a.map(function(v,i){
+    return Math.round(v + t*(b[i]-v)); }).join(',')+')';
+}
+
+var casing = L.geoJSON(TRAILS, {
+  style:function(f){ return {color:'#0C110F',
+    weight:weight(f.properties.passes)+3, opacity:.55, lineCap:'round',
+    lineJoin:'round'}; }
+}).addTo(map);
+
+var trails = L.geoJSON(TRAILS, {
+  style:function(f){
+    var p = f.properties.passes;
+    return {color:colour(p), weight:weight(p), opacity:.95,
+            lineCap:'round', lineJoin:'round'};
+  }
+}).bindPopup(function(l){
+  var p = l.feature.properties;
+  return '<b>'+p.passes+(p.passes===1?' visit':' visits')+'</b><br>'+
+         p.length_m+' m of trail';
+}).addTo(map);
+
+// dashed overlay calling out trail seen only once -- the stuff worth re-walking
+var once = L.geoJSON(TRAILS, {
+  filter:function(f){ return f.properties.passes === 1; },
+  style:{color:'#6FC0EE', weight:2, opacity:.95, dashArray:'5 6'}
+});
+
+function applyFilter(){
+  var min = +document.getElementById('minp').value;
+  [casing, trails].forEach(function(g){
+    g.eachLayer(function(l){
+      var vis = l.feature.properties.passes >= min;
+      if (l.setStyle) l.setStyle({opacity: vis ? (g===casing ? .55 : .95) : 0});
+    });
+  });
+}
+document.getElementById('minp').addEventListener('input', function(e){
+  document.getElementById('minv').innerHTML = e.target.value+'&times;';
+  applyFilter();
+});
+document.getElementById('t-once').addEventListener('change', function(e){
+  if (e.target.checked){ once.addTo(map); once.bringToFront(); }
+  else map.removeLayer(once);
+});
+
+// ---- legend and totals, both derived from the data ----
+(function(){
+  var by = {}, total = 0;
+  TRAILS.features.forEach(function(f){
+    var p = f.properties.passes;
+    by[p] = (by[p]||0) + f.properties.length_m;
+    total += f.properties.length_m;
+  });
+  var keys = Object.keys(by).map(Number).sort(function(a,b){return a-b;});
+  var rows = '';
+  [1, Math.round((1+MAXP)/2), MAXP].filter(function(v,i,a){
+    return a.indexOf(v)===i; }).forEach(function(p){
+    rows += '<div class="lg"><span class="bar" style="height:'+weight(p)+
+      'px;background:'+colour(p)+'"></span>'+p+(p===1?' visit':' visits')+'</div>';
+  });
+  document.getElementById('legrows').innerHTML = rows;
+
+  var t = '<b>'+(total/1000).toFixed(2)+' km</b> of distinct trail<br>';
+  keys.forEach(function(p){
+    t += p+'&times; &nbsp;<b>'+(by[p]/1000).toFixed(2)+'</b> km<br>';
+  });
+  document.getElementById('tot').innerHTML = t;
+})();
+
+// ---- basemap radios ----
+document.querySelectorAll('input[name=base]').forEach(function(r){
+  r.addEventListener('change', function(){
+    for (var k in base) map.removeLayer(base[k]);
+    base[r.value].addTo(map);
+    base[r.value].bringToBack();
+  });
+});
+
+function toggle(id, layer){
+  document.getElementById(id).addEventListener('change', function(e){
+    if (e.target.checked){ layer.addTo(map); layer.bringToFront(); }
+    else map.removeLayer(layer);
+  });
+}
+toggle('ov-cont', contours);
+toggle('ov-hill', hillBlend);
+
+document.getElementById('op').addEventListener('input', function(e){
+  hillBlend.setOpacity(e.target.value/100);
+  document.getElementById('opv').textContent = e.target.value+'%';
+});
+
+map.on('mousemove', function(e){
+  document.getElementById('readout').textContent =
+    e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5)+'  |  z'+map.getZoom();
+});
+
+document.getElementById('minp').max = MAXP;
+</script>
+</body>
+</html>
