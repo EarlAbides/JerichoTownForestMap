@@ -141,10 +141,12 @@ map.fitBounds(BOUNDS,{padding:[24,24]});
 L.control.scale({imperial:true,metric:false,position:'bottomleft'}).addTo(map);
 
 // one line per trail, drawn heavier the more visits have crossed it
-var MAXP=TRAILS.features.reduce(function(m,f){return Math.max(m,f.properties.passes);},1);
-function weight(p){ return 2.6+1.25*Math.min(p,10); }
+// saturates at CAP rather than at the data maximum, so the map stays
+// comparable to itself as walks accumulate -- see map_template.html
+var CAP=8;
+function weight(p){ return 2.6+1.25*Math.min(p,CAP); }
 function colour(p){
-  var t=MAXP>1?(Math.min(p,MAXP)-1)/(MAXP-1):1, a=[242,194,48], b=[255,122,56];
+  var t=(Math.min(p,CAP)-1)/(CAP-1), a=[242,194,48], b=[255,122,56];
   return 'rgb('+a.map(function(v,i){return Math.round(v+t*(b[i]-v));}).join(',')+')';
 }
 var casL=L.geoJSON(TRAILS,{style:function(f){

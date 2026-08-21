@@ -22,6 +22,7 @@ Decisions already made, so they don't get relitigated:
 | Source of truth | Personal GPS + open government data **only** |
 | Delivery | GitHub Pages. Everything ships as static files in `docs/` |
 | OSM | **Not uploading.** OSM paths are ignored entirely — bad coordinates |
+| Map scale | Visit weight/colour saturate at **8**, fixed, not data-driven |
 
 **Trailforks and AllTrails are off limits.** Trailforks lists 53 trails for this
 forest; both are proprietary databases and copying from them into OSM is a licence
@@ -43,6 +44,12 @@ Area of interest         data/aoi_traced.geojson — 1.16 km2 / 287 acres, simpl
 - **21.41 km** of forest walking after clipping, from 25.15 km raw.
 - **5.45 km of distinct trail** after merging repeat visits — 3.9x redundancy.
   About a third of it has been walked only once; both maps flag that on request.
+- Line weight and colour saturate at `CAP = 8` in both templates, **on purpose**.
+  The user confirmed 8 is as bold as it should ever get, and pass counts will
+  climb well past that as walks accumulate. Do not wire the scale back to the
+  data maximum — that would restretch the map on every new walk and make
+  versions incomparable. `MAXP` is still used, but only for the filter slider's
+  upper bound, which should track the real data.
 - **Median GPS accuracy 2 m** even under summer canopy. Merged centrelines sit a
   median 0.82 m from the nearest real fix (p95 2.78 m).
 

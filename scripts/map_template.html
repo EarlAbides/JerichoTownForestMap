@@ -131,14 +131,22 @@ L.control.scale({imperial:true, metric:true, position:'bottomright'}).addTo(map)
 var MAXP = TRAILS.features.reduce(function(m,f){
   return Math.max(m, f.properties.passes); }, 1);
 
-function weight(p){ return 2.2 + 1.15*Math.min(p, 10); }
+// The visual scale saturates at CAP and does NOT track the data maximum. Tying
+// it to MAXP would restretch the whole map every time a walk is added -- a
+// trail nobody had touched would change colour and weight on its own, and no
+// two versions of the map would be comparable. Anything at or above CAP reads
+// the same: as heavy as it gets.
+var CAP = 8;
+
+function weight(p){ return 2.2 + 1.15*Math.min(p, CAP); }
 function colour(p){
   // amber for a single visit, warming to blaze for the well-worn core
-  var t = MAXP > 1 ? (Math.min(p, MAXP)-1)/(MAXP-1) : 1;
+  var t = (Math.min(p, CAP)-1)/(CAP-1);
   var a = [242,194,48], b = [255,122,56];
   return 'rgb('+a.map(function(v,i){
     return Math.round(v + t*(b[i]-v)); }).join(',')+')';
 }
+function tier(p){ return p >= CAP ? CAP+'+' : String(p); }
 
 var casing = L.geoJSON(TRAILS, {
   style:function(f){ return {color:'#0C110F',
@@ -190,19 +198,27 @@ document.getElementById('t-once').addEventListener('change', function(e){
     by[p] = (by[p]||0) + f.properties.length_m;
     total += f.properties.length_m;
   });
-  var keys = Object.keys(by).map(Number).sort(function(a,b){return a-b;});
   var rows = '';
-  [1, Math.round((1+MAXP)/2), MAXP].filter(function(v,i,a){
+  [1, Math.round((1+CAP)/2), CAP].filter(function(v,i,a){
     return a.indexOf(v)===i; }).forEach(function(p){
     rows += '<div class="lg"><span class="bar" style="height:'+weight(p)+
-      'px;background:'+colour(p)+'"></span>'+p+(p===1?' visit':' visits')+'</div>';
+      'px;background:'+colour(p)+'"></span>'+tier(p)+
+      (p===1?' visit':' visits')+'</div>';
   });
   document.getElementById('legrows').innerHTML = rows;
 
-  var t = '<b>'+(total/1000).toFixed(2)+' km</b> of distinct trail<br>';
-  keys.forEach(function(p){
-    t += p+'&times; &nbsp;<b>'+(by[p]/1000).toFixed(2)+'</b> km<br>';
+  // bucket the totals the same way, so the panel stays a fixed height as the
+  // data grows instead of sprouting a new row per distinct visit count
+  var bucket = {};
+  Object.keys(by).forEach(function(k){
+    var b = Math.min(+k, CAP);
+    bucket[b] = (bucket[b]||0) + by[k];
   });
+  var t = '<b>'+(total/1000).toFixed(2)+' km</b> of distinct trail<br>';
+  Object.keys(bucket).map(Number).sort(function(a,b){return a-b;})
+    .forEach(function(p){
+      t += tier(p)+'&times; &nbsp;<b>'+(bucket[p]/1000).toFixed(2)+'</b> km<br>';
+    });
   document.getElementById('tot').innerHTML = t;
 })();
 

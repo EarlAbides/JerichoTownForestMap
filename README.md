@@ -22,6 +22,11 @@ map for offline use** — the 1,599 tiles it needs ship in the repo.
 hillshade blend for spotting trail you have not walked yet. Open it from disk.
 
 Both draw one line per trail, weighted by how many separate visits crossed it.
+The visual scale saturates at **8 visits** and deliberately does not track the
+data maximum: anything walked 8 times or more reads the same. Tying the scale to
+the actual maximum would restretch the whole map every time a walk was added, so
+a trail nobody had touched would change colour and weight on its own and no two
+versions would be comparable.
 
 ## Pipeline
 
