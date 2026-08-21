@@ -2,8 +2,12 @@
 
 Working notes for picking this up in a fresh session. Last updated 2026-08-20.
 
-**Nothing is committed.** The repo is initialized, everything is staged, the privacy
-audit passes. Holding at the gate deliberately — see Open issues.
+**Shipped and live.** Public repo, three commits past the initial one, GitHub
+Pages serving the field app. Working tree clean, privacy audit passing. Nothing
+is half-finished — pick up from *Wanted next*, not from a broken state.
+
+Quickest orientation: read *What this is*, then *Wanted next*. Everything between
+is reference for when you need it.
 
 ---
 
@@ -147,17 +151,12 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install fitdecode
 ```
 
-**The venv is not portable and the project has just been moved.** `.venv/Scripts/`
-bakes the absolute path into `activate` and into the `pip` / `fitjson` / `fittxt`
-shims, so a moved venv breaks in confusing ways. It is gitignored and there is
-exactly one dependency, so delete and rebuild rather than patching:
-
-```
-rm -rf .venv && python -m venv .venv
-.venv/Scripts/python.exe -m pip install fitdecode
-```
-
-Then re-run the pipeline once to confirm, ending with `privacy_audit.py`.
+The venv was rebuilt in place on 2026-08-20 after the folder move and the full
+pipeline was re-run clean, so **nothing is pending here**. Kept as a note only
+because it will bite again: `.venv/Scripts/` bakes the absolute path into
+`activate` and the `pip` / `fitjson` / `fittxt` shims, so *any* future move means
+deleting and rebuilding rather than patching. It is gitignored and there is one
+dependency, so that costs ten seconds.
 
 `fitdecode` remains the only dependency. `merge_passes.py` is deliberately pure
 Python — no numpy, no shapely — so setup stays one line and there are no wheels
@@ -187,7 +186,9 @@ push.** It exits non-zero on a leak and works as a pre-commit hook.
 
 ---
 
-## Open issues
+## Decisions and closed issues
+
+None of these are open. They are here so they do not get relitigated.
 
 1. ~~**Tails on the clipped paths**~~ — **fixed 2026-08-20.** The cut was being
    made at the first point *inside* the 30 m gateway radius, i.e. on the outer
@@ -217,6 +218,56 @@ push.** It exits non-zero on a leak and works as a pre-commit hook.
    would mean refetching from VCGI at view time, which breaks offline use in the
    forest and makes the site depend on VCGI being up and CORS-friendly. 12.9 MB
    is nothing against the 1 GB Pages soft limit.
+
+## Wanted next
+
+Nothing here is started. In rough priority order.
+
+### 1. Named routes with distances
+
+The user's idea, raised 2026-08-20, explicitly *not* to be acted on yet.
+
+The shape they described: **select sections of the network, assemble them into a
+route, name it, and get total mileage for that route.** So "the long loop" or
+"the river out-and-back" becomes a thing with a name and a number, rather than a
+shape you have to trace with your eye every time.
+
+Design notes worth having before starting, because one of them is a trap:
+
+- **The rendered features are the wrong selection unit.** `merge_passes.py` splits
+  each traced chain into runs of *equal pass count*, so one continuous trail
+  between two junctions can be several features, and a feature can end in the
+  middle of nowhere where the visit count happened to change. For routes the unit
+  wants to be junction-to-junction, with pass count carried along the segment
+  rather than used to split it. Cleanest fix is a second output —
+  `trails_topology.geojson`, one feature per junction-to-junction edge with node
+  ids at each end — leaving `trails_merged.geojson` alone for rendering.
+- Node ids fall straight out of the existing tracer: `chains()` already clusters
+  junction cells into groups and welds every chain end onto a shared centroid.
+  Those group indices *are* the node ids; they are simply not emitted today.
+- Distance is free — `length_m` is already per segment, so a route total is a sum.
+  Report miles, since that is how the user thinks about it.
+- **Where routes live matters.** The site is static on GitHub Pages, so either
+  routes are committed as `data/routes.json` and rebuilt into the page, or they
+  are per-viewer in `localStorage`. Committed is right for anything shareable to
+  locals; `localStorage` alone would strand a route on one phone.
+- Assembling by clicking segments needs a click-to-select interaction and a
+  copy-to-clipboard, much like the trace tool that was removed. That tool is gone
+  from `map_template.html` but recoverable from git history if the pattern helps.
+- Once edges carry node ids, "shortest route between these two points" is a
+  Dijkstra away. Probably not wanted, but the data would support it.
+
+### 2. Walk more
+
+The map improves on its own with every walk. About a third of the network has
+been crossed exactly once; both maps flag it on request.
+
+- Once-only trail and the spurs running off the ends of the tracks
+- Widen `aoi_traced.geojson` as walks push past it, then refetch tiles
+- Watch for genuinely parallel paths closer than `MATCH_R = 8.0` m getting fused
+  into one line. More data will not split them — it only makes the fused line
+  more confident. That constant is the fix, and only the user can spot the case
+  from the ground.
 
 ## Shipped
 
