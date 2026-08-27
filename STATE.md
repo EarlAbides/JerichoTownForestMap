@@ -1,8 +1,8 @@
 # Project state — resume here
 
-Working notes for picking this up in a fresh session. Last updated 2026-08-20.
+Working notes for picking this up in a fresh session. Last updated 2026-08-26.
 
-**Shipped and live.** Public repo, three commits past the initial one, GitHub
+**Shipped and live.** Public repo, several commits past the initial one, GitHub
 Pages serving the field app. Working tree clean, privacy audit passing. Nothing
 is half-finished — pick up from *Wanted next*, not from a broken state.
 
@@ -43,19 +43,21 @@ Road popout to home      44.503235, -72.974428
 Area of interest         data/aoi_traced.geojson — 1.16 km2 / 287 acres, simple ring
 ```
 
-- **8 walks**, Aug 8–19 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
+- **13 walks**, Aug 8–26 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
   does not offer GPX; FIT parses fine with `fitdecode`).
-- **21.41 km** of forest walking after clipping, from 25.15 km raw.
-- **5.45 km of distinct trail** after merging repeat visits — 3.9x redundancy.
-  About a third of it has been walked only once; both maps flag that on request.
+- **35.35 km** of forest walking after clipping, from 41.17 km raw.
+- **6.21 km of distinct trail** after merging repeat visits — 5.7x redundancy.
+  About a fifth of it has been walked only once; both maps flag that on request.
 - Line weight and colour saturate at `CAP = 8` in both templates, **on purpose**.
   The user confirmed 8 is as bold as it should ever get, and pass counts will
   climb well past that as walks accumulate. Do not wire the scale back to the
   data maximum — that would restretch the map on every new walk and make
   versions incomparable. `MAXP` is still used, but only for the filter slider's
-  upper bound, which should track the real data.
+  upper bound, which should track the real data. As of the 2026-08-26 batch the
+  busiest trail is at **13 passes**, so the cap is now actually clamping rather
+  than being theoretical — which is the intended behaviour, not a bug.
 - **Median GPS accuracy 2 m** even under summer canopy. Merged centrelines sit a
-  median 0.82 m from the nearest real fix (p95 2.78 m).
+  median 0.87 m from the nearest real fix (p95 3.43 m).
 
 ### What OSM has here
 Nothing usable. 16 unnamed foot-usable ways with coordinates wonky enough not to
@@ -166,7 +168,7 @@ to build on Windows.
 
 ## Privacy model
 
-Every walk starts and ends at the user's condo. The 16 raw endpoints cluster
+Every walk starts and ends at the user's condo. The 26 raw endpoints cluster
 within a median of **8 m** — the raw data pinpoints their front door, and the
 timestamps show when they are routinely out.
 
@@ -178,7 +180,7 @@ Three separate leaks were found and fixed; assume more are possible:
 3. **Metadata** — the `.fit` filename encodes the user's personal name *and* the
    exact minute of each walk, and survived into the "clean" file via the `name`
    and `source_file` properties. Properties are now rebuilt from scratch as
-   `walk-01`…`walk-08`.
+   `walk-01`…`walk-13`.
 
 `scripts/privacy_audit.py` scans every committable file for coordinates inside the
 exclusion radius and for name / timestamp / filename patterns. **Run it before any
@@ -196,8 +198,9 @@ None of these are open. They are here so they do not get relitigated.
    end — 16 of them fanning out of the entrance. `clip_tracks.py` now clusters
    the gateway touches, cuts at the point of closest approach within the first
    and last cluster, and interpolates the terminal vertex onto the exact
-   perpendicular foot. 579 m of stub removed (longest 40.9 m); every endpoint
-   now lands 0.0–2.5 m from a gateway node instead of ~29.5 m from it.
+   perpendicular foot. On the current 13 walks that removes 950 m of stub
+   (longest 42.5 m); every endpoint lands 0.0–2.7 m from a gateway node
+   instead of ~29.5 m from it.
 2. **No forest boundary — and that is the point, not a defect.** The town's
    line is one thing; beyond it is wild land threaded with herd paths and
    neighbourhood connectors. Finding those extents *is* the project, so there is
@@ -206,9 +209,9 @@ None of these are open. They are here so they do not get relitigated.
    past its edge.
 3. ~~**Repeated passes not merged**~~ — **fixed 2026-08-20.** `merge_passes.py`
    collapses every visit into one centreline per trail carrying a `passes` count,
-   and both maps draw line weight from it. **5.45 km of distinct trail** out of
-   21.41 km walked — 3.9x redundancy. The merged centreline sits a median 0.82 m
-   from the nearest real fix (p95 2.78 m). Re-runnable: it is a pure function of
+   and both maps draw line weight from it. **6.21 km of distinct trail** out of
+   35.35 km walked — 5.7x redundancy. The merged centreline sits a median 0.87 m
+   from the nearest real fix (p95 3.43 m). Re-runnable: it is a pure function of
    `forest_tracks.geojson`, so adding a walk means re-running the pipeline, with
    no incremental state to drift.
 4. ~~**Nothing uploaded to OSM**~~ — **not a goal.** Not uploading. This also
@@ -259,11 +262,16 @@ Design notes worth having before starting, because one of them is a trap:
 
 ### 2. Walk more
 
-The map improves on its own with every walk. About a third of the network has
+The map improves on its own with every walk. About a fifth of the network has
 been crossed exactly once; both maps flag it on request.
 
 - Once-only trail and the spurs running off the ends of the tracks
-- Widen `aoi_traced.geojson` as walks push past it, then refetch tiles
+- Widen `aoi_traced.geojson` as walks push past it, then refetch tiles. Checked
+  on 2026-08-26: the 13 walks still sit inside the AOI *bounding box*, so the
+  fetched tiles still cover them and no refetch is due. Three merged vertices do
+  fall outside the traced *ring*, up to 81 m, all of them the entrance stub —
+  that is pre-existing (the previous 8-walk map had the same two) and is the ring
+  clipping the gateway, not a walk escaping the envelope.
 - Watch for genuinely parallel paths closer than `MATCH_R = 8.0` m getting fused
   into one line. More data will not split them — it only makes the fused line
   more confident. That constant is the fix, and only the user can spot the case

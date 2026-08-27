@@ -55,9 +55,9 @@ a pure function of its input, so nothing drifts out of sync.
 
 ## How the merge works
 
-Eight walks over one path are eight parallel lines with GPS scatter between them.
-`merge_passes.py` turns them into one line down the middle carrying a count of how
-often it has been walked:
+Thirteen walks over one path are thirteen parallel lines with GPS scatter between
+them. `merge_passes.py` turns them into one line down the middle carrying a count
+of how often it has been walked:
 
 1. stamp a 4 m disc around every fix — half the 8 m match tolerance, so two passes
    of the same trail fuse into a solid corridor while genuinely separate trails
@@ -70,10 +70,10 @@ often it has been walked:
 
 ## Findings
 
-**21.41 km walked across 8 outings**, median GPS accuracy 2 m under summer canopy.
-That merges down to **5.45 km of distinct trail** — 3.9× redundancy — of which
-about a third has been walked only once and is worth a second visit to confirm.
-The merged centrelines sit a median of 0.82 m from the nearest real GPS fix.
+**35.35 km walked across 13 outings**, median GPS accuracy 2 m under summer canopy.
+That merges down to **6.21 km of distinct trail** — 5.7× redundancy — of which
+about a fifth has been walked only once and is worth a second visit to confirm.
+The merged centrelines sit a median of 0.87 m from the nearest real GPS fix.
 
 A section of the **Burlington & Lamoille Railroad** also runs through the forest —
 a 2.36 km abandoned grade traced off the LiDAR hillshade. It is not part of the
@@ -82,7 +82,7 @@ trail map; the evidence and the scripts are archived in
 
 ## Privacy
 
-Every recorded walk begins and ends at a private residence; the 16 raw track
+Every recorded walk begins and ends at a private residence; the 26 raw track
 endpoints cluster within a median of 8 m, which pinpoints a front door and shows
 when it is routinely empty. `.gitignore` therefore excludes `Exports/` and
 `data/raw_tracks.geojson`.
