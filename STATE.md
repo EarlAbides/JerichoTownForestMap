@@ -1,6 +1,6 @@
 # Project state — resume here
 
-Working notes for picking this up in a fresh session. Last updated 2026-08-26.
+Working notes for picking this up in a fresh session. Last updated 2026-09-02.
 
 **Shipped and live.** Public repo, several commits past the initial one, GitHub
 Pages serving the field app. Working tree clean, privacy audit passing. Nothing
@@ -27,6 +27,7 @@ Decisions already made, so they don't get relitigated:
 | Delivery | GitHub Pages. Everything ships as static files in `docs/` |
 | OSM | **Not uploading.** OSM paths are ignored entirely — bad coordinates |
 | Map scale | Visit weight/colour saturate at **8**, fixed, not data-driven |
+| Adding walks | Drop the `.fit` in `Exports/`, **reprocess everything**. No incremental base map |
 
 **Trailforks and AllTrails are off limits.** Trailforks lists 53 trails for this
 forest; both are proprietary databases and copying from them into OSM is a licence
@@ -43,21 +44,24 @@ Road popout to home      44.503235, -72.974428
 Area of interest         data/aoi_traced.geojson — 1.16 km2 / 287 acres, simple ring
 ```
 
-- **13 walks**, Aug 8–26 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
+- **19 walks**, Aug 8 – Sep 2 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
   does not offer GPX; FIT parses fine with `fitdecode`).
-- **35.35 km** of forest walking after clipping, from 41.17 km raw.
-- **6.21 km of distinct trail** after merging repeat visits — 5.7x redundancy.
-  About a fifth of it has been walked only once; both maps flag that on request.
+- **50.48 km** of forest walking after clipping, from 58.97 km raw.
+- **6.33 km of distinct trail** after merging repeat visits — 8.0x redundancy.
+  About a fifth of it (1.22 km) has been walked only once; both maps flag that on
+  request. The 9.3 km walked in the Aug 27 – Sep 2 batch added only 120 m of new
+  trail — the network is saturating, and new walking now mostly buys confidence.
 - Line weight and colour saturate at `CAP = 8` in both templates, **on purpose**.
   The user confirmed 8 is as bold as it should ever get, and pass counts will
   climb well past that as walks accumulate. Do not wire the scale back to the
   data maximum — that would restretch the map on every new walk and make
   versions incomparable. `MAXP` is still used, but only for the filter slider's
-  upper bound, which should track the real data. As of the 2026-08-26 batch the
-  busiest trail is at **13 passes**, so the cap is now actually clamping rather
-  than being theoretical — which is the intended behaviour, not a bug.
+  upper bound, which should track the real data. As of the 2026-09-02 batch the
+  busiest trail is at **19 passes**, so the cap is well past clamping — which is
+  the intended behaviour, not a bug.
 - **Median GPS accuracy 2 m** even under summer canopy. Merged centrelines sit a
-  median 0.87 m from the nearest real fix (p95 3.43 m).
+  median 0.88 m from the nearest real fix (p95 3.15 m — tighter than at 13 walks,
+  because every extra pass sharpens a centreline it crosses).
 
 ### What OSM has here
 Nothing usable. 16 unnamed foot-usable ways with coordinates wonky enough not to
@@ -164,6 +168,41 @@ dependency, so that costs ten seconds.
 Python — no numpy, no shapely — so setup stays one line and there are no wheels
 to build on Windows.
 
+### Why every walk reprocesses everything
+
+Asked and settled 2026-09-02: should new walks be merged into a saved base map
+instead of re-deriving the whole thing? **No.** Full reprocess is both the
+cheaper and the more accurate option, which is unusual enough to write down.
+
+*It is not slow.* Measured on the 19-walk set: parse 1.4 s, clip 0.2 s, merge
+1.3 s, both builds 0.3 s — **about 3 seconds end to end**. Going 13 → 19 walks
+moved the merge from 1.00 s to 1.25 s. The expensive stages (corridor, fill,
+thin) scale with the *area* the trails cover, not with the number of walks, and
+that area has stopped growing — so merge time is going flat while the data keeps
+accumulating. Only `parse_fit.py` is truly linear, at ~0.11 s per file.
+
+*Incremental would be worse, not just equal.* Every stage is global:
+
+- A centreline is the average of **all** fixes near it. Freezing it means the
+  first walk's GPS scatter permanently decides where a trail is drawn and no
+  later pass can correct it. The opposite is happening now — p95 offset went
+  from 3.43 m at 13 walks to 3.15 m at 19.
+- Topology comes from thinning the *union* corridor. A walk that links two
+  previously separate stubs turns them into a real junction and re-splits the
+  chains either side. Bolting a new line onto a frozen network cannot discover
+  that; it staples a T-joint onto a line instead.
+- `passes` is `len({distinct walks within MATCH_R})` **per vertex**, not a
+  counter. Move the vertex and the answer legitimately changes. Incrementing a
+  stored count on old geometry produces a different number, not the same one.
+- The pipeline is a pure function today: delete `data/` and it regenerates
+  identically. With saved state the map would depend on the *order* walks were
+  added, and a constant tuned later (`MATCH_R`, `CELL`, `SPUR`) could not be
+  applied retroactively without a full reprocess anyway.
+
+*If it ever does get slow*, the fix is to cache `parse_fit.py` per file, keyed on
+content hash — it is the one stage that is a genuine per-file map. That is worth
+doing somewhere north of a few hundred walks. **Never** freeze the merge.
+
 ---
 
 ## Privacy model
@@ -198,7 +237,7 @@ None of these are open. They are here so they do not get relitigated.
    end — 16 of them fanning out of the entrance. `clip_tracks.py` now clusters
    the gateway touches, cuts at the point of closest approach within the first
    and last cluster, and interpolates the terminal vertex onto the exact
-   perpendicular foot. On the current 13 walks that removes 950 m of stub
+   perpendicular foot. On the 13 walks of the day that removed 950 m of stub
    (longest 42.5 m); every endpoint lands 0.0–2.7 m from a gateway node
    instead of ~29.5 m from it.
 2. **No forest boundary — and that is the point, not a defect.** The town's
@@ -209,9 +248,9 @@ None of these are open. They are here so they do not get relitigated.
    past its edge.
 3. ~~**Repeated passes not merged**~~ — **fixed 2026-08-20.** `merge_passes.py`
    collapses every visit into one centreline per trail carrying a `passes` count,
-   and both maps draw line weight from it. **6.21 km of distinct trail** out of
-   35.35 km walked — 5.7x redundancy. The merged centreline sits a median 0.87 m
-   from the nearest real fix (p95 3.43 m). Re-runnable: it is a pure function of
+   and both maps draw line weight from it. **6.33 km of distinct trail** out of
+   50.48 km walked — 8.0x redundancy. The merged centreline sits a median 0.88 m
+   from the nearest real fix (p95 3.15 m). Re-runnable: it is a pure function of
    `forest_tracks.geojson`, so adding a walk means re-running the pipeline, with
    no incremental state to drift.
 4. ~~**Nothing uploaded to OSM**~~ — **not a goal.** Not uploading. This also
@@ -267,10 +306,10 @@ been crossed exactly once; both maps flag it on request.
 
 - Once-only trail and the spurs running off the ends of the tracks
 - Widen `aoi_traced.geojson` as walks push past it, then refetch tiles. Checked
-  on 2026-08-26: the 13 walks still sit inside the AOI *bounding box*, so the
-  fetched tiles still cover them and no refetch is due. Three merged vertices do
-  fall outside the traced *ring*, up to 81 m, all of them the entrance stub —
-  that is pre-existing (the previous 8-walk map had the same two) and is the ring
+  on 2026-09-02: the 19 walks still sit inside the AOI *bounding box*, so the
+  fetched tiles still cover them and no refetch is due. Two merged vertices do
+  fall outside the traced *ring*, up to 81.1 m, all of them the entrance stub —
+  that is pre-existing (the 8- and 13-walk maps had the same two) and is the ring
   clipping the gateway, not a walk escaping the envelope.
 - Watch for genuinely parallel paths closer than `MATCH_R = 8.0` m getting fused
   into one line. More data will not split them — it only makes the fused line

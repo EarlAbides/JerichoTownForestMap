@@ -55,7 +55,7 @@ a pure function of its input, so nothing drifts out of sync.
 
 ## How the merge works
 
-Thirteen walks over one path are thirteen parallel lines with GPS scatter between
+Nineteen walks over one path are nineteen parallel lines with GPS scatter between
 them. `merge_passes.py` turns them into one line down the middle carrying a count
 of how often it has been walked:
 
@@ -70,10 +70,10 @@ of how often it has been walked:
 
 ## Findings
 
-**35.35 km walked across 13 outings**, median GPS accuracy 2 m under summer canopy.
-That merges down to **6.21 km of distinct trail** — 5.7× redundancy — of which
+**50.48 km walked across 19 outings**, median GPS accuracy 2 m under summer canopy.
+That merges down to **6.33 km of distinct trail** — 8.0× redundancy — of which
 about a fifth has been walked only once and is worth a second visit to confirm.
-The merged centrelines sit a median of 0.87 m from the nearest real GPS fix.
+The merged centrelines sit a median of 0.88 m from the nearest real GPS fix.
 
 A section of the **Burlington & Lamoille Railroad** also runs through the forest —
 a 2.36 km abandoned grade traced off the LiDAR hillshade. It is not part of the
