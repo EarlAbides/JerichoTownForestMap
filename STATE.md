@@ -138,6 +138,7 @@ therefore stale and superseded; do not republish it.
 ### Pipeline order
 
 ```
+run_pipeline.py      Exports/*.zip          -> unpacks, then runs the chain below
 parse_fit.py         Exports/*.fit          -> data/raw_tracks.geojson  [PRIVATE]
 clip_tracks.py       raw_tracks             -> data/forest_tracks.geojson
 merge_passes.py      forest_tracks          -> data/trails_merged.geojson
@@ -169,6 +170,13 @@ Python — no numpy, no shapely — so setup stays one line and there are no whe
 to build on Windows.
 
 ### Why every walk reprocesses everything
+
+`run_pipeline.py` (added 2026-09-02) is the one command for all of this: it
+unpacks every zip in `Exports/`, skipping any `.fit` whose name is already there
+so stale zips can sit around without overwriting anything, then runs the chain
+and halts on the first non-zero exit — a tripped privacy gate means nothing
+downstream gets rebuilt. It does not run `fetch_tiles.py`; tiles only need a
+refetch when the AOI widens.
 
 Asked and settled 2026-09-02: should new walks be merged into a saved base map
 instead of re-deriving the whole thing? **No.** Full reprocess is both the

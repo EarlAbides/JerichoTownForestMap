@@ -30,10 +30,13 @@ versions would be comparable.
 
 ## Pipeline
 
-Each script is independent and re-runnable in this order:
+`run_pipeline.py` is the front door: it unpacks any new walks and runs the chain,
+stopping if the privacy gate trips. The stages underneath are independent and
+re-runnable in this order:
 
 | Script | Does |
 |---|---|
+| `run_pipeline.py` | Unpacks `Exports/*.zip`, then runs everything below except the tile fetch |
 | `parse_fit.py` | Apple Watch `.fit` exports → `raw_tracks.geojson` |
 | `clip_tracks.py` | Clips to the forest gateways, strips timestamps → `forest_tracks.geojson` |
 | `merge_passes.py` | Collapses repeat visits into one centreline per trail → `trails_merged.geojson` |
@@ -46,12 +49,15 @@ Each script is independent and re-runnable in this order:
 ```
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install fitdecode
-.venv/Scripts/python.exe scripts/parse_fit.py
+.venv/Scripts/python.exe scripts/run_pipeline.py
 ```
 
-`fitdecode` is the only dependency. Adding new walks means dropping the `.fit`
-files into `Exports/` and running the pipeline again from the top — every stage is
-a pure function of its input, so nothing drifts out of sync.
+`fitdecode` is the only dependency. Adding new walks means dropping the HealthFit
+zip (or loose `.fit` files) into `Exports/` and running that one command — about
+three seconds. It re-derives the map from every walk, every time: each stage is a
+pure function of its input, so nothing drifts out of sync, and old zips can pile
+up harmlessly because a `.fit` already in `Exports/` is skipped, never
+overwritten.
 
 ## How the merge works
 
