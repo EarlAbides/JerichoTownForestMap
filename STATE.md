@@ -1,6 +1,6 @@
 # Project state — resume here
 
-Working notes for picking this up in a fresh session. Last updated 2026-09-02.
+Working notes for picking this up in a fresh session. Last updated 2026-09-07.
 
 **Shipped and live.** Public repo, several commits past the initial one, GitHub
 Pages serving the field app. Working tree clean, privacy audit passing. Nothing
@@ -44,23 +44,26 @@ Road popout to home      44.503235, -72.974428
 Area of interest         data/aoi_traced.geojson — 1.16 km2 / 287 acres, simple ring
 ```
 
-- **19 walks**, Aug 8 – Sep 2 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
+- **20 walks**, Aug 8 – Sep 7 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
   does not offer GPX; FIT parses fine with `fitdecode`).
-- **50.48 km** of forest walking after clipping, from 58.97 km raw.
-- **6.33 km of distinct trail** after merging repeat visits — 8.0x redundancy.
-  About a fifth of it (1.22 km) has been walked only once; both maps flag that on
-  request. The 9.3 km walked in the Aug 27 – Sep 2 batch added only 120 m of new
-  trail — the network is saturating, and new walking now mostly buys confidence.
+- **55.50 km** of forest walking after clipping, from 64.41 km raw.
+- **6.78 km of distinct trail** after merging repeat visits — 8.2x redundancy,
+  184 segments in a **single connected component**.
+  About a fifth of it (1.45 km) has been walked only once; both maps flag that on
+  request. Saturation is real but not finished: the 9.3 km walked in the Aug 27 –
+  Sep 2 batch added only 120 m of new trail, and then the single Sep 7 walk added
+  **400 m** — the biggest jump in a while, and it pushed the walked-once figure
+  *up* rather than down. There is still new ground to find.
 - Line weight and colour saturate at `CAP = 8` in both templates, **on purpose**.
   The user confirmed 8 is as bold as it should ever get, and pass counts will
   climb well past that as walks accumulate. Do not wire the scale back to the
   data maximum — that would restretch the map on every new walk and make
   versions incomparable. `MAXP` is still used, but only for the filter slider's
-  upper bound, which should track the real data. As of the 2026-09-02 batch the
-  busiest trail is at **19 passes**, so the cap is well past clamping — which is
+  upper bound, which should track the real data. As of the 2026-09-07 walk the
+  busiest trail is at **20 passes**, so the cap is well past clamping — which is
   the intended behaviour, not a bug.
 - **Median GPS accuracy 2 m** even under summer canopy. Merged centrelines sit a
-  median 0.88 m from the nearest real fix (p95 3.15 m — tighter than at 13 walks,
+  median 0.84 m from the nearest real fix (p95 3.12 m — tighter than at 13 walks,
   because every extra pass sharpens a centreline it crosses).
 
 ### What OSM has here
@@ -142,14 +145,17 @@ run_pipeline.py      Exports/*.zip          -> unpacks, then runs the chain belo
 parse_fit.py         Exports/*.fit          -> data/raw_tracks.geojson  [PRIVATE]
 clip_tracks.py       raw_tracks             -> data/forest_tracks.geojson
 merge_passes.py      forest_tracks          -> data/trails_merged.geojson
+gap_audit.py         merged + forest_tracks -> data/gap_candidates.geojson
 aoi_tiles.py         aoi polygon            -> tile counts
 fetch_tiles.py       VCGI                   -> docs/tiles/
 build_field.py       trails_merged + aoi    -> docs/index.html + tiles.json
-build_map.py         trails_merged          -> map.html
+build_map.py         trails_merged + gaps   -> map.html
 privacy_audit.py     GATE — exits non-zero on any leak
 ```
 
-Both maps read `trails_merged.geojson` and nothing else. **Never point anything at
+Both maps read `trails_merged.geojson` and nothing else — `map.html` also reads
+`gap_candidates.geojson`, but only to draw the review overlay, never as trail.
+`build_map.py` tolerates that file being absent so it still runs standalone. **Never point anything at
 `raw_tracks.geojson`** — that is exactly the bug that leaked the user's home into
 `map.html` and `grade_candidates.geojson`.
 
@@ -211,6 +217,84 @@ accumulating. Only `parse_fit.py` is truly linear, at ~0.11 s per file.
 content hash — it is the one stage that is a genuine per-file map. That is worth
 doing somewhere north of a few hundred walks. **Never** freeze the merge.
 
+### The disconnection bugs, fixed 2026-09-07
+
+The user reported, twice, that trails which should join were drawn broken — and
+specifically **in high-traffic areas**, which ruled out thin data. Three separate
+faults, all in `merge_passes.py`, all now fixed. Ground truth came from a review
+pass in the new gap-audit overlay; the user's verdicts are what calibrated the
+thresholds, so do not retune these from intuition.
+
+1. **Short connectors were deleted.** `raw = [c for c in chains(skel) if plen >= SPUR]`
+   dropped every chain under 12 m — including chains welded to a junction at
+   *both* ends, which are connectors, not whiskers. Five were being deleted every
+   run, two of them carrying **11 and 12 walks**. The prune loop directly above
+   had always had the rule right (`plen < SPUR and not (h and tl)`); the final
+   filter simply disagreed with it. `SPUR` is a whisker rule, never a minimum
+   trail length.
+
+2. **The hole-fill invented trail.** Stage 2 fills braiding pinholes, which is
+   what stops thinning turning every hole into a mesh — but it pays by inventing
+   corridor, and the skeleton then runs down ground nobody walked. One blob near
+   the entrance produced a segment **10 m from the nearest fix carrying 0 passes**,
+   drawing as a hole punched through a 9-pass trail. Now: skeleton cells further
+   than `FILL_MAX` from any fix are pruned and the skeleton re-thinned.
+   **`FILL_MAX = DILATE + CELL` and the window is narrow** — the corridor reaches
+   `DILATE` from a fix and the grid quantises by one cell, so that is the ceiling
+   on a legitimately derived cell; real skeleton runs p99 = 4.5 m from a fix.
+   Both sides were tested the hard way. At **5 m** the cut severed a stretch two
+   walks had crossed and invented four false gaps. At **`MATCH_R`** it left the
+   two stubs from the user's screenshot, 7.0 and 7.8 m from any fix, drawn as
+   *9-pass trail* — because pass count is sampled at `MATCH_R`, so a stub lying
+   within 8 m of a busy trail **inherits that trail's walk count whether or not
+   anyone walked the stub**. That inheritance is why phantom geometry does not
+   look phantom on the map, and it is the single most useful test in this file:
+   compare walks within 3 m of a segment against the count it is drawn with.
+   Real trail here sits 0.3–0.4 m from a fix; the stubs had nothing within 7 m.
+
+3. **Thinning left T-junctions hanging.** Thinning is a local rule, so a stem
+   meeting a crossbar at a shallow angle can stop metres short, and the cells are
+   genuinely not adjacent — re-thinning cannot fix it. `weld()` now rejoins
+   dangling ends, **gated on evidence**: at least `WELD_W = 2` distinct walks must
+   have a fix near *every* quarter point of the gap. A gap nobody has walked
+   stays open, so this does not undo `MATCH_R`. Bridges are laid straight and
+   then refined onto the fixes they cross, so a weld across a curve follows the
+   curve instead of cutting the corner — which is what the user asked for at the
+   rail-bed terminus. Whether an end is dangling is decided **geometrically**, by
+   whether anything is actually joined there; the `head`/`tail` flags cannot
+   answer it, because they only say "hangs off a junction group" and stay true
+   for a stub left alone after the phantom prune removed what it used to meet.
+
+4. **`refine()` ran after `weld()`, so welding judged the wrong gap.** Thinning
+   leaves a chain end metres off the line people walked. At the entrance two ends
+   sat **11.7 m apart across the void** unrefined and **7.5 m apart** once slid
+   onto the trail — so the evidence test sampled ground nobody had walked and
+   declined a join **8 walks had made**. Refining first fixed it. General lesson:
+   any test about how a map *looks* has to run on the geometry that gets drawn,
+   not on an earlier draft of it.
+
+Result: **184 segments in a single connected component**, up from a network that
+broke into pieces, and `gap_audit.py` now reports **zero** candidates. The fixes
+are worth about 0.05 km of recovered trail, but the point was never the length —
+it was that a walked trail is drawn as one trail, and that nothing is drawn where
+nobody walked.
+
+### The gap-audit overlay
+
+`gap_audit.py` → `data/gap_candidates.geojson` → numbered rings in `map.html`
+under **Review ▸ Gap audit**. It exists because this class of bug is invisible in
+aggregate statistics and obvious to someone who has walked the ground.
+
+Detection is deliberately conservative — a gap is reported only if walks actually
+cross it, since two trails passing close is what `MATCH_R` exists to preserve.
+The workflow: the user marks each candidate real/not/unsure, **shift-clicks the
+map** to pin anything the scan missed, and copies a plain-text report back. The
+pins carried more information than the verdicts did — one "appendage that is a
+mis-step" turned out to be fault 1, a 10 m connector with 12 walks on it.
+
+Keep the overlay. When new walks land, an empty audit is the signal that the
+merge is behaving, and a non-empty one is a question worth asking the user.
+
 ---
 
 ## Privacy model
@@ -256,9 +340,9 @@ None of these are open. They are here so they do not get relitigated.
    past its edge.
 3. ~~**Repeated passes not merged**~~ — **fixed 2026-08-20.** `merge_passes.py`
    collapses every visit into one centreline per trail carrying a `passes` count,
-   and both maps draw line weight from it. **6.33 km of distinct trail** out of
-   50.48 km walked — 8.0x redundancy. The merged centreline sits a median 0.88 m
-   from the nearest real fix (p95 3.15 m). Re-runnable: it is a pure function of
+   and both maps draw line weight from it. **6.78 km of distinct trail** out of
+   55.50 km walked — 8.2x redundancy. The merged centreline sits a median 0.84 m
+   from the nearest real fix (p95 3.12 m). Re-runnable: it is a pure function of
    `forest_tracks.geojson`, so adding a walk means re-running the pipeline, with
    no incremental state to drift.
 4. ~~**Nothing uploaded to OSM**~~ — **not a goal.** Not uploading. This also
@@ -314,9 +398,9 @@ been crossed exactly once; both maps flag it on request.
 
 - Once-only trail and the spurs running off the ends of the tracks
 - Widen `aoi_traced.geojson` as walks push past it, then refetch tiles. Checked
-  on 2026-09-02: the 19 walks still sit inside the AOI *bounding box*, so the
+  on 2026-09-07: the 20 walks still sit inside the AOI *bounding box*, so the
   fetched tiles still cover them and no refetch is due. Two merged vertices do
-  fall outside the traced *ring*, up to 81.1 m, all of them the entrance stub —
+  fall outside the traced *ring*, up to 83.0 m, all of them the entrance stub —
   that is pre-existing (the 8- and 13-walk maps had the same two) and is the ring
   clipping the gateway, not a walk escaping the envelope.
 - Watch for genuinely parallel paths closer than `MATCH_R = 8.0` m getting fused
