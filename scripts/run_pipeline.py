@@ -24,7 +24,7 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXPORTS = ROOT / "Exports"
 
-STAGES = ["parse_fit.py", "clip_tracks.py", "merge_passes.py",
+STAGES = ["parse_fit.py", "clip_tracks.py", "merge_passes.py", "gap_audit.py",
           "build_field.py", "build_map.py", "privacy_audit.py"]
 
 

@@ -46,6 +46,54 @@
   .tot{font-family:var(--mono);font-size:11px;color:var(--ink-2);line-height:1.7;
     font-variant-numeric:tabular-nums}
   .tot b{color:var(--ink);font-weight:600}
+
+  /* ---- gap audit ---- */
+  #audit{top:12px;right:12px;width:310px;max-height:calc(100% - 24px);
+    overflow-y:auto;display:none}
+  #audit.on{display:block}
+  #audit h1{margin:0;padding:12px 14px 10px;font-size:13px;letter-spacing:.09em;
+    text-transform:uppercase;font-family:var(--mono);
+    border-bottom:1px solid var(--rule);font-weight:600}
+  .cand{padding:9px 14px;border-bottom:1px solid var(--rule);cursor:pointer;line-height:1.4}
+  .cand:hover{background:#ffffff0b}
+  .cand .hd{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  .num{font-family:var(--mono);font-size:11px;font-weight:700;color:#0C110F;
+    background:var(--amber);border-radius:50%;width:19px;height:19px;flex:none;
+    display:flex;align-items:center;justify-content:center}
+  .kind{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--ink-2);border:1px solid var(--rule);
+    padding:1px 5px;border-radius:2px}
+  .why{font-size:11.5px;color:var(--ink-2)}
+  .vb{display:flex;gap:5px;margin-top:6px}
+  .vb button{flex:1;font-family:var(--mono);font-size:10px;letter-spacing:.06em;
+    padding:3px 0;background:#1B221E;color:var(--ink-2);cursor:pointer;
+    border:1px solid var(--rule);border-radius:2px}
+  .vb button:hover{color:#fff;border-color:#4A5A53}
+  .vb button.sel{background:var(--blaze);border-color:var(--blaze);color:#0C110F;font-weight:700}
+  .vb button.sel.no{background:#6E7B74;border-color:#6E7B74}
+  .vb button.sel.maybe{background:var(--slate);border-color:var(--slate)}
+  .pin{padding:7px 14px;border-bottom:1px solid var(--rule);display:flex;
+    align-items:center;gap:7px}
+  .pin input{flex:1;min-width:0;background:#1B221E;border:1px solid var(--rule);
+    color:var(--ink);border-radius:2px;padding:3px 6px;font-family:var(--sans);font-size:11.5px}
+  .pin .x{color:var(--ink-2);cursor:pointer;font-family:var(--mono);flex:none;padding:0 2px}
+  .pin .x:hover{color:var(--blaze)}
+  #arep{width:100%;height:112px;background:#080B0A;color:var(--ink);
+    border:1px solid var(--rule);border-radius:2px;font-family:var(--mono);
+    font-size:10.5px;padding:7px;resize:vertical;display:none}
+  #arep.on{display:block}
+  .abtn{width:100%;font-family:var(--mono);font-size:11px;letter-spacing:.07em;
+    text-transform:uppercase;padding:7px 0;margin-bottom:7px;background:var(--blaze);
+    color:#0C110F;font-weight:700;border:0;border-radius:2px;cursor:pointer}
+  .abtn:hover{filter:brightness(1.12)}
+  .gmark{display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:11px;font-weight:700;color:#0C110F;
+    background:var(--amber);border:2px solid #0C110F;border-radius:50%;
+    width:22px;height:22px;box-shadow:0 0 0 2px #F2C23066}
+  .gmark.yes{background:var(--blaze);box-shadow:0 0 0 2px #FF7A3866}
+  .gmark.no{background:#6E7B74;box-shadow:none}
+  .gmark.maybe{background:var(--slate);box-shadow:0 0 0 2px #6FC0EE66}
+  .gmark.pin{background:#fff;box-shadow:0 0 0 2px #ffffff66}
 </style>
 </head>
 <body>
@@ -83,6 +131,13 @@
   </div>
 
   <div class="grp">
+    <div class="lbl">Review</div>
+    <label class="row"><input type="checkbox" id="ov-gaps">
+      <span class="swatch" style="border-color:var(--amber)"></span>
+      Gap audit <span class="val" style="float:none" id="gapn"></span></label>
+  </div>
+
+  <div class="grp">
     <div class="lbl">Network</div>
     <div class="tot" id="tot"></div>
   </div>
@@ -101,10 +156,25 @@
 
 <div class="pane" id="readout">move cursor over map</div>
 
+<div class="pane" id="audit">
+  <h1>Gap audit</h1>
+  <div class="hint" style="padding:10px 14px 11px">Places the network may be broken.
+  Click a number to fly to it, then mark it. <b>Shift&#8209;click the map</b> to pin a
+  gap I missed. Then copy the report and paste it back to me.</div>
+  <div id="clist"></div>
+  <div class="lbl" style="padding:11px 14px 0">Your pins</div>
+  <div id="plist"></div>
+  <div class="grp">
+    <button class="abtn" id="acopy">Copy report</button>
+    <textarea id="arep" readonly></textarea>
+  </div>
+</div>
+
 <script src="vendor/leaflet.js"></script>
 <script>
 var TRAILS = /*__TRAILS__*/;
 var BOUNDS = /*__BOUNDS__*/;
+var GAPS   = /*__GAPS__*/;
 
 var VCGI = 'https://maps.vcgi.vermont.gov/arcgis/rest/services/EGC_services/';
 var ATTR_VT = 'Imagery &amp; LiDAR: <a href="https://vcgi.vermont.gov/">VCGI</a>';
@@ -249,6 +319,142 @@ map.on('mousemove', function(e){
   document.getElementById('readout').textContent =
     e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5)+'  |  z'+map.getZoom();
 });
+
+// ---------------------------------------------------------------- gap audit
+// A review surface, not a fix: it marks where the merge probably broke and
+// collects the user's verdict.  Nothing here writes back into the network --
+// the report is copied out by hand and the real fix happens in the pipeline.
+var gapLayer = L.layerGroup(),
+    verdict  = {},          // candidate id -> 'yes' | 'no' | 'maybe'
+    pins     = [],          // user-dropped {lat, lng, note, marker}
+    gmark    = {};
+
+document.getElementById('gapn').textContent =
+  GAPS.features.length ? GAPS.features.length + ' found' : 'none found';
+
+function ring(latlng, label, cls, cb){
+  return L.marker(latlng, {icon: L.divIcon({
+    className:'', iconSize:[22,22], iconAnchor:[11,11],
+    html:'<div class="gmark '+cls+'">'+label+'</div>'})})
+    .on('click', function(e){ L.DomEvent.stop(e); cb(); });
+}
+
+function drawGaps(){
+  gapLayer.clearLayers(); gmark = {};
+  GAPS.features.forEach(function(f){
+    var id = f.properties.id, c = f.geometry.coordinates;
+    if (f.properties.bridge)          // show the join the merge failed to make
+      L.polyline(f.properties.bridge.map(function(b){ return [b[1], b[0]]; }),
+        {color:'#F2C230', weight:2, opacity:.9, dashArray:'3 5'}).addTo(gapLayer);
+    var m = ring([c[1], c[0]], id, verdict[id] || '', function(){ focus(id); });
+    m.bindTooltip(f.properties.why, {direction:'top', offset:[0,-12]});
+    m.addTo(gapLayer); gmark[id] = m;
+  });
+  pins.forEach(function(pn, i){
+    pn.marker = ring([pn.lat, pn.lng], 'P'+(i+1), 'pin', function(){});
+    pn.marker.addTo(gapLayer);
+  });
+}
+
+function focus(id){
+  var f = GAPS.features.filter(function(x){ return x.properties.id === id; })[0];
+  map.setView([f.geometry.coordinates[1], f.geometry.coordinates[0]],
+              Math.max(map.getZoom(), 19));
+}
+
+function setVerdict(id, v){
+  verdict[id] = (verdict[id] === v) ? null : v;
+  renderList(); drawGaps();
+}
+
+function renderList(){
+  var h = '';
+  GAPS.features.forEach(function(f){
+    var q = f.properties, v = verdict[q.id] || '';
+    h += '<div class="cand" data-id="'+q.id+'">'+
+         '<div class="hd"><span class="num">'+q.id+'</span>'+
+         '<span class="kind">'+q.kind+'</span>'+
+         (q.gap_m ? '<span class="kind">'+q.gap_m+' m</span>' : '')+'</div>'+
+         '<div class="why">'+q.why+'</div>'+
+         '<div class="vb">'+
+         '<button data-v="yes" class="'+(v==='yes'?'sel':'')+'">Real gap</button>'+
+         '<button data-v="no" class="'+(v==='no'?'sel no':'')+'">Not a gap</button>'+
+         '<button data-v="maybe" class="'+(v==='maybe'?'sel maybe':'')+'">Unsure</button>'+
+         '</div></div>';
+  });
+  document.getElementById('clist').innerHTML = h;
+
+  var pl = '';
+  pins.forEach(function(pn, i){
+    pl += '<div class="pin"><span class="num">P'+(i+1)+'</span>'+
+          '<input placeholder="what should connect here?" data-i="'+i+'" value="'+
+          (pn.note||'').replace(/"/g,'&quot;')+'"><span class="x" data-i="'+i+'">&times;</span></div>';
+  });
+  document.getElementById('plist').innerHTML = pl ||
+    '<div class="hint" style="padding:4px 14px 10px">None yet &mdash; shift&#8209;click the map.</div>';
+}
+
+document.getElementById('clist').addEventListener('click', function(e){
+  var b = e.target.closest('button'), card = e.target.closest('.cand');
+  if (!card) return;
+  if (b) setVerdict(+card.dataset.id, b.dataset.v);
+  else focus(+card.dataset.id);
+});
+document.getElementById('plist').addEventListener('input', function(e){
+  if (e.target.tagName === 'INPUT') pins[+e.target.dataset.i].note = e.target.value;
+});
+document.getElementById('plist').addEventListener('click', function(e){
+  if (!e.target.classList.contains('x')) return;
+  pins.splice(+e.target.dataset.i, 1); renderList(); drawGaps();
+});
+
+map.on('click', function(e){
+  if (!e.originalEvent.shiftKey) return;
+  if (!document.getElementById('ov-gaps').checked) return;
+  pins.push({lat:e.latlng.lat, lng:e.latlng.lng, note:''});
+  renderList(); drawGaps();
+});
+
+document.getElementById('ov-gaps').addEventListener('change', function(e){
+  document.getElementById('audit').classList.toggle('on', e.target.checked);
+  if (e.target.checked){ gapLayer.addTo(map); drawGaps(); }
+  else map.removeLayer(gapLayer);
+});
+
+document.getElementById('acopy').addEventListener('click', function(){
+  var L1 = ['GAP AUDIT — Jericho Town Forest', ''];
+  GAPS.features.forEach(function(f){
+    var q = f.properties, v = verdict[q.id];
+    if (!v) return;
+    L1.push('#'+q.id+' ['+q.kind+'] '+
+            {yes:'REAL GAP', no:'not a gap', maybe:'unsure'}[v]+
+            '  @ '+f.geometry.coordinates[1].toFixed(6)+','+
+            f.geometry.coordinates[0].toFixed(6)+
+            '\n    '+q.why);
+  });
+  if (L1.length === 2) L1.push('(no candidates marked)');
+  if (pins.length){
+    L1.push('', 'PINS — gaps the scan missed:');
+    pins.forEach(function(pn, i){
+      L1.push('P'+(i+1)+' @ '+pn.lat.toFixed(6)+','+pn.lng.toFixed(6)+
+              '  '+(pn.note || '(no note)'));
+    });
+  }
+  var ta = document.getElementById('arep');
+  ta.value = L1.join('\n');
+  ta.classList.add('on');
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch(err){}
+  if (!ok && navigator.clipboard) {
+    navigator.clipboard.writeText(ta.value).then(function(){ ok = true; }, function(){});
+  }
+  this.textContent = ok ? 'Copied \u2014 paste it to Claude' : 'Select the text below and copy';
+  var b = this;
+  setTimeout(function(){ b.textContent = 'Copy report'; }, 3200);
+});
+
+renderList();
 
 document.getElementById('minp').max = MAXP;
 </script>
