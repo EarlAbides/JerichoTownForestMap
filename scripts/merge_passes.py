@@ -41,6 +41,9 @@ REFINE_R = 7.0    # m, window for pulling a vertex onto the centre of the fixes
 SPUR     = 12.0   # m, dead-end branches shorter than this are thinning artefacts
 DP_TOL   = 0.75   # m, final simplify tolerance
 SMOOTH   = 5      # vertices, median window on the pass count
+FILL_MAX = DILATE + CELL  # m, skeleton further than this from any fix is fill
+WELD_R   = 25.0   # m, furthest a dangling end will reach to rejoin the network
+WELD_W   = 2      # distinct walks that must cross a gap before it is welded shut
 
 LAT0 = 44.5018
 MLAT, MLON = 111132.0, 111320.0*math.cos(math.radians(LAT0))
@@ -140,6 +143,26 @@ def thin(S):
         if not removed: return S
 
 skel = thin(occ)
+
+# The fill in stage 2 closes braiding pinholes, which is what keeps thinning
+# from turning every hole into a loop -- but it pays for that by inventing
+# corridor.  Where it closes a hole of any size, the skeleton runs down the
+# middle of ground nobody walked, and the result is trail drawn from no evidence
+# at all: one such blob near the entrance produced a segment 10 m from the
+# nearest fix, carrying 0 passes, drawing as a hole punched through a 9-pass
+# trail.  DILATE + CELL is the ceiling on how far a legitimately derived cell
+# can sit from the fix that put it there: the corridor reaches DILATE, and the
+# grid quantises position by one cell.  Real skeleton runs p99 = 4.5 m from a
+# fix, so this cuts well clear of it, and the window is not as wide as it looks
+# -- at 5 m the cut severed a stretch two walks had crossed, and at MATCH_R it
+# left two stubs 7.0 and 7.8 m from any fix drawn as 9-pass trail, because a
+# stub within MATCH_R of a real trail inherits that trail's walk count whether
+# or not anyone walked the stub.  Drop these cells and re-thin.  The fill still
+# does its job; this only declines to draw its interior.
+phantom = {c for c in skel if not near(uncell(c), FILL_MAX)}
+if phantom:
+    skel = thin(skel - phantom)
+print(f"pruned   {len(phantom)} phantom cells further than {FILL_MAX:.0f} m from any fix")
 
 def cross(S, c):
     """Crossing number: 1 = dead end, 2 = along a trail, 3+ = junction."""
@@ -248,7 +271,93 @@ for _ in range(4):                      # drop thinning whiskers, then re-thin
     if not junk: break
     skel = thin(skel - junk)
 
-raw = [c for c in chains(skel) if plen(c[0]) >= SPUR]
+# SPUR is a whisker rule, not a minimum trail length: a chain welded to a
+# junction at BOTH ends is a connector, however short, and dropping it punches a
+# hole through a trail that is otherwise continuous.  The prune loop above has
+# always had this right; this filter used to disagree with it and deleted five
+# real connectors, two of them carrying 11 and 12 walks.
+raw = [c for c in chains(skel) if plen(c[0]) >= SPUR or (c[1] and c[2])]
+
+# ------------------------------------------------- 4b. weld dangling ends
+def crossing_walks(a, b):
+    """Distinct walks with a fix near EVERY quarter point of the line a->b.
+
+    Requiring all three points rules out a walk that merely brushes one end;
+    only something that actually traversed the gap counts.
+    """
+    return set.intersection(*[
+        {w for _, w in near((a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t), DILATE+CELL)}
+        for t in (0.25, 0.5, 0.75)])
+
+
+def weld(ch):
+    """Rejoin chain ends that thinning left hanging, where the GPS proves it.
+
+    Thinning is a local rule, so at a T whose stem meets the crossbar at a
+    shallow angle it can stop a few metres short: the cells are genuinely not
+    adjacent and no amount of re-thinning brings them together.  The evidence
+    for the join is not in the skeleton at all, it is in the fixes lying in the
+    gap -- so that is what gets tested, and a gap nobody has walked through
+    stays open.  Two trails passing close by is exactly the case MATCH_R exists
+    to keep apart, and this must not undo that.
+
+    The bridge is laid down straight and left for refine() to pull sideways onto
+    the fixes underneath it, so a weld across a curve comes out following the
+    curve rather than cutting the corner.
+    """
+    ch = [[list(pts), h, t] for pts, h, t in ch]
+    welds = []
+    for _ in range(64):
+        # An end is dangling if nothing is actually joined to it.  The head/tail
+        # flags cannot answer that: they say "hangs off a junction group", which
+        # stays true for a stub left alone at a junction after the phantom prune
+        # took away everything it used to meet.  Ask the geometry instead.
+        held = defaultdict(int)
+        for P, _, _ in ch:
+            for q in P: held[(round(q[0], 1), round(q[1], 1))] += 1
+
+        best = None
+        for i, (P, h, t) in enumerate(ch):
+            for end in (0, -1):
+                p = P[end]
+                if held[(round(p[0], 1), round(p[1], 1))] > 1: continue
+                near_ch = []
+                for j, (Q, _, _) in enumerate(ch):
+                    if j == i: continue
+                    k, d = min(((k, math.dist(p, q)) for k, q in enumerate(Q)),
+                               key=lambda kd: kd[1])
+                    if 1e-9 < d <= WELD_R: near_ch.append((d, j, k))
+                for d, j, k in sorted(near_ch):
+                    if best and d >= best[0]: break
+                    w = crossing_walks(p, ch[j][0][k])
+                    if len(w) >= WELD_W:
+                        best = (d, i, end, j, k, len(w)); break
+        if not best: break
+
+        d, i, end, j, k, nw = best
+        p, q = ch[i][0][end], ch[j][0][k]
+        n = max(1, round(d/CELL))
+        bridge = [(p[0]+(q[0]-p[0])*s/n, p[1]+(q[1]-p[1])*s/n) for s in range(n+1)]
+        bridge = refine(bridge)          # let it settle onto the fixes it crosses
+        bridge[0], bridge[-1] = p, q     # but keep it attached to what it joins
+
+        if end == 0: ch[i][1] = True
+        else:        ch[i][2] = True
+        Q, hj, tj = ch[j]
+        if k == 0:            ch[j][1] = True      # welded onto an existing end
+        elif k == len(Q)-1:   ch[j][2] = True
+        else:                                      # T into the middle: split it
+            ch[j] = [Q[:k+1], hj, True]
+            ch.append([Q[k:], True, tj])
+        ch.append([bridge, True, True])
+        welds.append((d, nw))
+
+    if welds:
+        print(f"welded   {len(welds)} gaps thinning left open "
+              f"({min(w[0] for w in welds):.1f}-{max(w[0] for w in welds):.1f} m, "
+              f"{min(w[1] for w in welds)}-{max(w[1] for w in welds)} walks crossing)")
+    return [(P, h, t) for P, h, t in ch]
+
 ends = sum(1 for c in skel if cross(skel, c) == 1)
 jns  = sum(1 for c in skel if cross(skel, c) >= 3)
 print(f"skeleton {len(skel)} cells, {ends} dead ends, {jns} junction cells")
@@ -297,13 +406,25 @@ def dp(P, tol):
     if best <= tol: return [a, b]
     return dp(P[:bi+1], tol)[:-1] + dp(P[bi:], tol)
 
-# ------------------------------------------------------ 6. attribute
-feats, tot = [], defaultdict(float)
+# Refine BEFORE welding, not after.  Thinning leaves a chain end a few metres
+# off the line people actually walked, and a gap measured between two unrefined
+# ends runs through different ground than the gap that finally gets drawn: at
+# the entrance the ends sat 11.7 m apart across the void here and 7.5 m apart
+# once refined onto the trail, so the evidence test looked in the wrong place
+# and declined a join that 8 walks had made.  Refine first and weld() sees the
+# gap the reader will see.
+ref = []
 for pts, head, tail in raw:
     P = refine(pts)
     if head: P[0]  = pts[0]        # junction positions are shared, so leave
     if tail: P[-1] = pts[-1]       # them exactly where chains() put them
-    P = dp(chaikin(P), DP_TOL)
+    ref.append((P, head, tail))
+raw = weld(ref)
+
+# ------------------------------------------------------ 6. attribute
+feats, tot = [], defaultdict(float)
+for pts, head, tail in raw:
+    P = dp(chaikin(list(pts)), DP_TOL)
     if len(P) < 2: continue
 
     cnt = [len({w for _, w in near(p, MATCH_R)}) for p in P]
