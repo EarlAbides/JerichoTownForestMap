@@ -76,10 +76,10 @@ of how often it has been walked:
 
 ## Findings
 
-**55.50 km walked across 20 outings**, median GPS accuracy 2 m under summer canopy.
-That merges down to **6.78 km of distinct trail** — 8.2× redundancy — of which
+**80.26 km walked across 31 outings**, median GPS accuracy 2 m under summer canopy.
+That merges down to **6.91 km of distinct trail** — 11.6× redundancy — of which
 about a fifth has been walked only once and is worth a second visit to confirm.
-The merged centrelines sit a median of 0.84 m from the nearest real GPS fix.
+The merged centrelines sit a median of under 0.7 m from the nearest real GPS fix.
 
 A section of the **Burlington & Lamoille Railroad** also runs through the forest —
 a 2.36 km abandoned grade traced off the LiDAR hillshade. It is not part of the

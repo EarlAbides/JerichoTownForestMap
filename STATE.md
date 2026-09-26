@@ -1,6 +1,6 @@
 # Project state — resume here
 
-Working notes for picking this up in a fresh session. Last updated 2026-09-07.
+Working notes for picking this up in a fresh session. Last updated 2026-09-26.
 
 **Shipped and live.** Public repo, several commits past the initial one, GitHub
 Pages serving the field app. Working tree clean, privacy audit passing. Nothing
@@ -44,27 +44,31 @@ Road popout to home      44.503235, -72.974428
 Area of interest         data/aoi_traced.geojson — 1.16 km2 / 287 acres, simple ring
 ```
 
-- **20 walks**, Aug 8 – Sep 7 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
+- **31 walks**, Aug 8 – Sep 26 2026, exported from HealthFit as `.fit` (not GPX — HealthFit
   does not offer GPX; FIT parses fine with `fitdecode`).
-- **55.50 km** of forest walking after clipping, from 64.41 km raw.
-- **6.78 km of distinct trail** after merging repeat visits — 8.2x redundancy,
-  184 segments in a **single connected component**.
-  About a fifth of it (1.45 km) has been walked only once; both maps flag that on
-  request. Saturation is real but not finished: the 9.3 km walked in the Aug 27 –
-  Sep 2 batch added only 120 m of new trail, and then the single Sep 7 walk added
-  **400 m** — the biggest jump in a while, and it pushed the walked-once figure
-  *up* rather than down. There is still new ground to find.
+- **80.26 km** of forest walking after clipping, from 93.75 km raw.
+- **6.91 km of distinct trail** after merging repeat visits — 11.6x redundancy,
+  205 segments in a **single connected component**.
+  About a fifth of it (1.41 km) has been walked only once; both maps flag that on
+  request. Saturation is now clear: the 9.3 km walked in the Aug 27 – Sep 2 batch
+  added only 120 m of new trail, the single Sep 7 walk added **400 m**, and then
+  the 11 walks of Sep 8 – 26 (24.8 km in the forest) added only **130 m**. Most of
+  that is one walked-once spur off the north edge on Sep 22, which runs ~31 m past
+  the AOI ring. The rest of the batch went into confirming existing trail.
 - Line weight and colour saturate at `CAP = 8` in both templates, **on purpose**.
   The user confirmed 8 is as bold as it should ever get, and pass counts will
   climb well past that as walks accumulate. Do not wire the scale back to the
   data maximum — that would restretch the map on every new walk and make
   versions incomparable. `MAXP` is still used, but only for the filter slider's
-  upper bound, which should track the real data. As of the 2026-09-07 walk the
-  busiest trail is at **20 passes**, so the cap is well past clamping — which is
+  upper bound, which should track the real data. As of the 2026-09-26 walk the
+  busiest trail is at **31 passes**, so the cap is well past clamping — which is
   the intended behaviour, not a bug.
 - **Median GPS accuracy 2 m** even under summer canopy. Merged centrelines sit a
   median 0.84 m from the nearest real fix (p95 3.12 m — tighter than at 13 walks,
-  because every extra pass sharpens a centreline it crosses).
+  because every extra pass sharpens a centreline it crosses). At 31 walks a quick
+  vertex-to-nearest-fix check gives median **0.67 m**, p95 2.74 m. The same check
+  on the 20-walk build gives 0.82 / 2.84, so the numbers are not directly comparable
+  with the figures above, but the trend holds: the centrelines keep tightening.
 
 ### What OSM has here
 Nothing usable. 16 unnamed foot-usable ways with coordinates wonky enough not to
@@ -340,8 +344,8 @@ None of these are open. They are here so they do not get relitigated.
    past its edge.
 3. ~~**Repeated passes not merged**~~ — **fixed 2026-08-20.** `merge_passes.py`
    collapses every visit into one centreline per trail carrying a `passes` count,
-   and both maps draw line weight from it. **6.78 km of distinct trail** out of
-   55.50 km walked — 8.2x redundancy. The merged centreline sits a median 0.84 m
+   and both maps draw line weight from it. **6.91 km of distinct trail** out of
+   80.26 km walked — 11.6x redundancy (at 31 walks). The merged centreline sits a median 0.84 m
    from the nearest real fix (p95 3.12 m). Re-runnable: it is a pure function of
    `forest_tracks.geojson`, so adding a walk means re-running the pipeline, with
    no incremental state to drift.
@@ -399,7 +403,10 @@ been crossed exactly once; both maps flag it on request.
 - Once-only trail and the spurs running off the ends of the tracks
 - Widen `aoi_traced.geojson` as walks push past it, then refetch tiles. Checked
   on 2026-09-07: the 20 walks still sit inside the AOI *bounding box*, so the
-  fetched tiles still cover them and no refetch is due. Two merged vertices do
+  fetched tiles still cover them and no refetch is due. Re-checked 2026-09-26 at 31
+  walks: the Sep 22 walk's north spur now runs ~31 m past the ring (and ~7 m past
+  the bbox), but the z17–19 imagery and hillshade tiles already extend past it, so
+  there is still no refetch. It has one pass so far; widen the ring once it has more. Two merged vertices do
   fall outside the traced *ring*, up to 83.0 m, all of them the entrance stub —
   that is pre-existing (the 8- and 13-walk maps had the same two) and is the ring
   clipping the gateway, not a walk escaping the envelope.
